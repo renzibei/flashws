@@ -14,9 +14,13 @@ namespace fws {
         constexpr inline size_t MAX_HANDSHAKE_RESP_LENGTH = 512;
         constexpr inline size_t MAX_HANDSHAKE_REQUEST_LENGTH = 4096;
 
-        constexpr inline size_t MAX_WRITABLE_SIZE_ONE_TIME = 16384;
+//        constexpr inline size_t MAX_WRITABLE_SIZE_ONE_TIME = 16384;
         // TODO: dynamic change this
-//        constexpr inline size_t MAX_WRITABLE_SIZE_ONE_TIME = 65536;
+#ifdef FWS_ENABLE_FSTACK
+        constexpr inline size_t MAX_WRITABLE_SIZE_ONE_TIME = 65536;
+#else
+        constexpr inline size_t MAX_WRITABLE_SIZE_ONE_TIME = 32768;
+#endif
 //        constexpr inline size_t MAX_WRITABLE_SIZE_ONE_TIME = 1UL << 21;
 
         // The actual maximum size of frame size is 4 GB for both recv and send

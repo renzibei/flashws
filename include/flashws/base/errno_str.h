@@ -3,6 +3,7 @@
 #include <utility>
 #include <cstdlib>
 #include <cstdarg>
+#include <string>
 
 namespace fws {
 

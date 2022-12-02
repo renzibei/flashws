@@ -117,7 +117,7 @@ namespace test {
 //                   opcode, io_buf.start_pos, io_buf.size, io_buf.capacity,
 //                   is_frame_end, is_msg_end, is_control_msg);
             if (!is_control_msg) {
-                constexpr size_t MAX_DISPLAY_LEN = 128;
+//                constexpr size_t MAX_DISPLAY_LEN = 128;
 //                std::string str((char*)(io_buf.data + io_buf.start_pos), std::min(MAX_DISPLAY_LEN, io_buf.size));
 //                if (io_buf.size > 0) {
 //                    printf("data:\n%s\n", str.c_str());

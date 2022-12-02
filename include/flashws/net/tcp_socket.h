@@ -84,24 +84,12 @@ namespace fws {
 #endif
         }
 
+        // This function is not accurate
         int GetWritableBytes() {
 #ifdef FWS_ENABLE_FSTACK
-            int bytes_in_buffer = 0;
-            if FWS_UNLIKELY(ff_ioctl(fd_, TIOCOUTQ, &bytes_in_buffer) < 0) {
-                SetErrorFormatStr("Failed to query TIOCOUTQ using ff_ioctl");
-                return -1;
-            }
-            int sock_buffer_size = 0;
-            socklen_t sb_sz = sizeof(sock_buffer_size);
-            int get_ret = ff_getsockopt(fd_, SOL_SOCKET, SO_SNDBUF, &sock_buffer_size, &sb_sz);
-            int64_t bytes_available = sock_buffer_size - bytes_in_buffer;
-            FWS_ASSERT(bytes_available >= 0);
-            if FWS_UNLIKELY(get_ret < 0) {
-                SetErrorFormatStr("Failed to query SO_SNDBUF using ioctl for fd %d",
-                                  fd_);
-                return get_ret;
-            }
-            return bytes_available;
+            // TODO: not safe
+            return 16384;
+//            return 0;
 #else
             int bytes_in_buffer = 0;
             if FWS_UNLIKELY(ioctl(fd_, TIOCOUTQ, &bytes_in_buffer) < 0) {
@@ -119,7 +107,8 @@ namespace fws {
                                   fd_, std::strerror(errno));
                 return get_ret;
             }
-            return bytes_available;
+            size_t ret = std::min(size_t(bytes_available), constants::MAX_WRITABLE_SIZE_ONE_TIME);
+            return ret;
 #endif
         }
 
@@ -198,6 +187,13 @@ namespace fws {
                 auto find_it = fd_info_map.find(fd_);
                 if (find_it != fd_info_map.end()) {
                     fd_info_map.erase(find_it);
+                }
+            }
+#elif defined(FWS_EPOLL)
+            for (auto& [fq_fd, fd_info_map]: detail::queue_to_fd_info_map) {
+                auto find_it = fd_info_map.find(fd_);
+                if (find_it != fd_info_map.end()) {
+                    find_it->second.cur_evs = 0;
                 }
             }
 #endif

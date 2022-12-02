@@ -488,8 +488,7 @@ namespace fws {
                                                        char out_sec_key[29]) {
             char sha1_buf[20];
             Sha1SecKey(in_sec_key, sha1_buf);
-            constexpr size_t BASE64_BUF_LEN = GetBase64EncodeLength(20);
-            assert(BASE64_BUF_LEN == 29);
+            assert(GetBase64EncodeLength(20) == 29);
 
             fws::Base64Encode(sha1_buf, 20, out_sec_key);
         }

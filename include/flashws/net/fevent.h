@@ -185,7 +185,7 @@ namespace fws {
 
     namespace detail {
 
-#if !defined(FWS_ENABLE_FSTACK) && defined(FWS_LINUX)
+#if !defined(FWS_ENABLE_FSTACK)
         struct FdInfo {
             int cur_evs = 0;
             void *user_data = nullptr;
@@ -281,7 +281,21 @@ namespace fws {
                     op = EPOLL_CTL_MOD;
                 }
                 else {
+
+#ifdef FWS_DEV_DEBUG
                     FWS_ASSERT_M(false, "Shouldn't be in this branch");
+#else
+                    // do nothing, maybe user add the duplicated event
+                    continue;
+#endif
+
+//                    SetErrorFormatStr("Shouldn't be in this branch in FEventWait"
+//                                      ", cur_events: %d, target_events: %d,"
+//                                      " fd: %d, event.flags: %d, event.filter: %d",
+//                                      cur_events, target_events, fd, event.flags,
+//                                      event.filter);
+//                    return -1;
+//
                 }
 
                 ep_event.events = target_events;
@@ -315,6 +329,7 @@ namespace fws {
                                   epoll_wait_ret, std::strerror(errno));
                 return epoll_wait_ret;
             }
+            auto& fd_info_map = detail::queue_to_fd_info_map[fq.fd];
             for (int i = 0; i < epoll_wait_ret; ++i) {
                 auto &ep_event = event_data[i];
                 auto &f_event = event_list[i];
@@ -326,11 +341,12 @@ namespace fws {
 //                fprintf(stderr, "epoll_wait return fd %d, events: %x\n",
 //                        fd, ep_event.events);
 //#endif
-                auto find_it = detail::queue_to_fd_info_map[fq.fd].find(fd);
+                auto find_it = fd_info_map.find(fd);
                 f_event.udata = find_it->second.user_data;
 
                 if FWS_UNLIKELY(ep_flag & EPOLLHUP) {
                     f_event.flags |= FEV_EOF;
+                    find_it->second.cur_evs = 0;
                 }
                 if FWS_UNLIKELY(ep_flag & EPOLLERR) {
                     f_event.flags &= FEV_ERROR;
@@ -338,6 +354,7 @@ namespace fws {
                     socklen_t s_len = 0;
                     int get_ret = getsockopt(fd, SOL_SOCKET, SO_ERROR, &s_err, &s_len);
                     f_event.fflags = get_ret < 0 ? errno : s_err;
+                    find_it->second.cur_evs = 0;
                 }
                 auto handle_out = [&]() {
                     f_event.filter = FEVFILT_WRITE;

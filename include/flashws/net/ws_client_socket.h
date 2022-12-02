@@ -74,6 +74,10 @@ namespace fws {
                 else if (client_status_ == WAIT_HTTP_REPLY) {
                     return HandleHandshakeReply(recv_buf, handler);
                 }
+                else if (client_status_ == WAIT_TCP_CONNECT) {
+                    // Will be connected in writable event
+                    return 0;
+                }
                 else {
                     SetErrorFormatStr("Shouldn't be in this status in read event, status: %d",
                                       client_status_);
