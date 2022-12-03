@@ -24,11 +24,32 @@ namespace fws {
                 return -1;
             }
             else {
-                int available = static_cast<int>(event.data);
 
-                do {
+
+
+#ifdef FWS_ENABLE_FSTACK
+                int available = static_cast<int>(event.data);
+#ifdef FWS_DEV_DEBUG
+                fprintf(stderr, "ws server %d get %d sockets to accept\n",
+                        tcp_socket_.fd(), available);
+#endif
+                size_t need_fevent_size = sizeof(fws::FEvent) * available;
+                IOBuffer events_buf = RequestBuf(need_fevent_size);
+                FEvent* ev_start = (FEvent*)(events_buf.data);
+                size_t ev_cnt = 0;
+#endif
+
+                while(true) {
+#ifdef FWS_ENABLE_FSTACK
+                    if (available-- <= 0) {
+                        break;
+                    }
+#endif
                     auto new_opt_sock = tcp_socket_.Accept(nullptr, nullptr);
-                    if FWS_UNLIKELY(!new_opt_sock.has_value()) {
+                    if (!new_opt_sock.has_value()) {
+                        if FWS_LIKELY(errno == EWOULDBLOCK) {
+                            break;
+                        }
                         SetErrorFormatStr("WS server failed to accept new socket");
                         return -2;
                     }
@@ -49,15 +70,25 @@ namespace fws {
                             return -7;
                         }
                     }
+#ifdef FWS_ENABLE_FSTACK
+                    ev_start[ev_cnt++] = FEvent(new_fd, FEVFILT_READ, FEV_ADD, FEFFLAG_NONE,
+                                      0, nullptr);
+#else
                     FEvent read_event(new_fd, FEVFILT_READ, FEV_ADD, FEFFLAG_NONE,
                                       0, nullptr);
                     if FWS_UNLIKELY(fws::FEventWait(fq, &read_event, 1, nullptr, 0, nullptr) < 0) {
                         return -5;
                     }
+#endif
                     fws::WSServerSocket new_wsocket{};
                     new_wsocket.Init(new_tcp_sock);
                     handler.OnNewTcpConnection(new_wsocket);
-                } while(--available);
+                }
+#ifdef FWS_ENABLE_FSTACK
+                if FWS_UNLIKELY(fws::FEventWait(fq, ev_start, ev_cnt, nullptr, 0, nullptr) < 0) {
+                        return -6;
+                }
+#endif
             }
             return 0;
         }

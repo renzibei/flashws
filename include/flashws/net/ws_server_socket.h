@@ -55,8 +55,9 @@ namespace fws {
                     return -2;
 #else
                     std::string previous_strerror = std::string(GetErrorStrV());
-                    SetErrorFormatStr("Error when reading in ws server read, ava size: %zu, %s\n",
-                                      available_size, previous_strerror.c_str());
+                    SetErrorFormatStr("Error when reading in ws server read, "
+                                      "fd: %d, ava size: %zu, %s\n",
+                                      tcp_socket_.fd(), available_size, previous_strerror.c_str());
                     return -2;
 #endif
 
@@ -83,13 +84,6 @@ namespace fws {
             else if (event.filter == FEVFILT_WRITE) {
                 size_t available_size = size_t(event.data);
                 if FWS_LIKELY(status_ == OPEN_STATUS) {
-                    if FWS_UNLIKELY(need_send_control_msg_) {
-                        ssize_t handle_control_msg_ret = HandleUnsentControlMsgOnWritable(available_size);
-                        if FWS_UNLIKELY(handle_control_msg_ret < 0) {
-                            return handle_control_msg_ret;
-                        }
-                        available_size -= handle_control_msg_ret;
-                    }
                     available_size = std::min(available_size, constants::MAX_WRITABLE_SIZE_ONE_TIME);
                     int write_ret = handler.OnWritable(*this, available_size);
                     return write_ret;
@@ -103,10 +97,19 @@ namespace fws {
         }
 
         // User can use fws::GetTxWSFrameHdrSize to calculate the size of frame
-        // header. Only when the sum of hdr size and payload size is no less than
+        // header. However, when there is unsent control frame, need to take
+        // the size of control frame into account. Only when the sum of hdr
+        // size and payload size is no less than
         // writable_size, will we make this frame the last frame of a msg.
         FWS_ALWAYS_INLINE ssize_t WriteFrame(IOBuffer& io_buf, size_t writable_size,
                                              WSTxFrameType frame_type, bool last_frame_if_possible) {
+            if FWS_UNLIKELY(need_send_control_msg_) {
+                ssize_t handle_control_msg_ret = HandleUnsentControlMsgOnWritable(writable_size);
+                if FWS_UNLIKELY(handle_control_msg_ret < 0) {
+                    return handle_control_msg_ret;
+                }
+                writable_size -= handle_control_msg_ret;
+            }
             return SendFrame(io_buf,writable_size, frame_type, last_frame_if_possible);
         }
 

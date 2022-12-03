@@ -421,22 +421,22 @@ namespace fws {
                 // event in kqueue, we only keep the first check r or w event.
                 // And the check order is in round-robin fashion.
                 int handle_ret = 0;
-                if (round_robin_r & 1) {
+//                if (round_robin_r & 1) {
                     if (ep_flag & EPOLLOUT) {
                         handle_ret = handle_out();
                     }
                     else if (ep_flag & EPOLLIN) {
                         handle_ret = handle_in();
                     }
-                }
-                else {
-                    if (ep_flag & EPOLLIN) {
-                        handle_ret = handle_in();
-                    }
-                    else if (ep_flag & EPOLLOUT) {
-                        handle_ret = handle_out();
-                    }
-                }
+//                }
+//                else {
+//                    if (ep_flag & EPOLLIN) {
+//                        handle_ret = handle_in();
+//                    }
+//                    else if (ep_flag & EPOLLOUT) {
+//                        handle_ret = handle_out();
+//                    }
+//                }
                 if FWS_UNLIKELY(handle_ret < 0) {
                     return handle_ret;
                 }

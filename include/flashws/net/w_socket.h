@@ -69,7 +69,7 @@ namespace fws {
 
 
 
-        TcpSocket& tcp_socket() {
+        FWS_ALWAYS_INLINE TcpSocket& tcp_socket() {
             return tcp_socket_;
         }
 
@@ -91,10 +91,10 @@ namespace fws {
 
             tcp_socket_.Shutdown(TcpSocket::SHUT_RDWR_MODE);
             int close_ret = tcp_socket_.Close();
-#ifdef FWS_DEV_DEBUG
-            fprintf(stderr, "tcp socket closed in CloseCon, clean_ret: %d, close_ret %d\n",
-                clean_ret, close_ret);
-#endif
+//#ifdef FWS_DEV_DEBUG
+//            fprintf(stderr, "tcp socket closed in CloseCon, clean_ret: %d, close_ret %d\n",
+//                clean_ret, close_ret);
+//#endif
             return clean_ret | close_ret;
         }
 
@@ -493,7 +493,7 @@ namespace fws {
             fws::Base64Encode(sha1_buf, 20, out_sec_key);
         }
 
-        ssize_t HandleUnsentControlMsgOnWritable(size_t writable_size) FWS_FUNC_RESTRICT {
+        ssize_t HandleUnsentControlMsgOnWritable(size_t writable_size)  {
             if FWS_LIKELY(!need_send_control_msg_) {
                 return 0;
             }
@@ -585,14 +585,14 @@ namespace fws {
             size_t old_buf_size = io_buf.size;
             io_buf.size = frame_size;
             ssize_t send_ret = tcp_socket_.Write(io_buf, frame_size, old_buf_size + frame_hdr_size);
-#ifdef FWS_DEV_DEBUG
-            if FWS_UNLIKELY(is_control || size_t(send_ret) != frame_size) {
-                fprintf(stderr, "fd %d Send frame opcode: %u, fin: %u, write ret: %zd,"
-                                "frame size: %zu, writable size %zu\n",
-                        tcp_socket_.fd(), opcode, fin, send_ret, frame_size, writable_size);
-            }
-
-#endif
+//#ifdef FWS_DEV_DEBUG
+//            if FWS_UNLIKELY(is_control || size_t(send_ret) != frame_size) {
+//                fprintf(stderr, "fd %d Send frame opcode: %u, fin: %u, write ret: %zd,"
+//                                "frame size: %zu, writable size %zu\n",
+//                        tcp_socket_.fd(), opcode, fin, send_ret, frame_size, writable_size);
+//            }
+//
+//#endif
             if FWS_LIKELY(send_ret >= 0) {
                 FWS_ASSERT_M(size_t(send_ret) == frame_size, "send size should always equal"
                                                              "to frame size");

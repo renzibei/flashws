@@ -19,6 +19,23 @@ namespace fws {
     class TcpSocket {
     public:
 
+        TcpSocket(): fd_(0) {}
+
+        TcpSocket(const TcpSocket&) = delete;
+        TcpSocket& operator=(const TcpSocket&) = delete;
+        TcpSocket(TcpSocket&& o) noexcept: fd_(std::exchange(o.fd_, 0)) {}
+
+        TcpSocket& operator=(TcpSocket&& o) noexcept {
+            std::swap(fd_, o.fd_);
+            return *this;
+        }
+
+        ~TcpSocket() {
+            if (fd_ != 0) {
+                Close();
+            }
+        }
+
         int Init() {
 #ifdef FWS_ENABLE_FSTACK
             int fd = ff_socket(AF_INET, SOCK_STREAM, 0);
@@ -167,7 +184,7 @@ namespace fws {
 #else
             int new_fd = accept(fd_, addr, addr_len);
 #endif
-            if FWS_UNLIKELY(new_fd < 0) {
+            if (new_fd < 0) {
                 return std::nullopt;
             }
             TcpSocket ret_sock{};
@@ -182,6 +199,9 @@ namespace fws {
         }
 
         int Close() FWS_FUNC_RESTRICT {
+            if (fd_ == 0) {
+                return 0;
+            }
 #ifdef FWS_POLL
             for (auto& [fq_fd, fd_info_map]: detail::queue_to_fd_info_map) {
                 auto find_it = fd_info_map.find(fd_);
@@ -197,12 +217,16 @@ namespace fws {
                 }
             }
 #endif
-
+            int ret = 0;
 #ifdef FWS_ENABLE_FSTACK
-            return ff_close(fd_);
+            ret = ff_close(fd_);
 #else
-            return close(fd_);
+            ret = close(fd_);
 #endif
+
+
+            fd_ = 0;
+            return ret;
         }
 
         IOBuffer Read(size_t max_size, size_t reserve_size_ahead = 0) FWS_FUNC_RESTRICT {

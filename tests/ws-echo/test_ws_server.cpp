@@ -36,10 +36,12 @@ namespace test {
 
         // New tcp connection accepted
         int OnNewTcpConnection(fws::WSServerSocket &w_socket) {
-            printf("OnNewTcpConnection called, fd: %d\n", w_socket.tcp_socket().fd());
+            int fd = w_socket.tcp_socket().fd();
+            printf("OnNewTcpConnection called, fd: %d\n", fd);
             auto new_buf = fws::RequestBuf(MAX_DATA_LEN + fws::constants::SUGGEST_RESERVE_WS_HDR_SIZE);
             new_buf.start_pos = fws::constants::SUGGEST_RESERVE_WS_HDR_SIZE;
-            fd_to_socks[w_socket.tcp_socket().fd()] = {std::move(w_socket), std::move(new_buf), {}};
+
+            fd_to_socks[fd] = {std::move(w_socket), std::move(new_buf), {}};
             return 0;
         }
 
