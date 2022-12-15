@@ -20,7 +20,7 @@ target_link_libraries(test_ws_client
         PRIVATE ${HDR_HIST_LIB}
         )
 
-add_subdirectory(../.. ${CMAKE_CURRENT_SOURCE_DIR}/flashws)
+add_subdirectory(../.. ${CMAKE_CURRENT_BINARY_DIR}/flashws)
 
 
 target_link_libraries(test_ws_client PRIVATE fws::flashws)
