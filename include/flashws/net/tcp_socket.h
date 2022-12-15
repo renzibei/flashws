@@ -19,20 +19,31 @@ namespace fws {
     class TcpSocket {
     public:
 
-        TcpSocket(): fd_(0) {}
+        inline static constexpr int INVALID_FD = -1;
+
+        TcpSocket(): fd_(INVALID_FD) {}
 
         TcpSocket(const TcpSocket&) = delete;
         TcpSocket& operator=(const TcpSocket&) = delete;
-        TcpSocket(TcpSocket&& o) noexcept: fd_(std::exchange(o.fd_, 0)) {}
+        TcpSocket(TcpSocket&& o) noexcept: fd_(std::exchange(o.fd_, INVALID_FD)) {}
 
         TcpSocket& operator=(TcpSocket&& o) noexcept {
             std::swap(fd_, o.fd_);
             return *this;
         }
 
+        enum ShutDownMode {
+            SHUT_RD_MODE = SHUT_RD,
+            SHUT_WR_MODE = SHUT_WR,
+            SHUT_RDWR_MODE = SHUT_RDWR,
+        };
+
         ~TcpSocket() {
-            if (fd_ != 0) {
+            if (fd_ != INVALID_FD) {
+                // TODO: test whether Close send FIN flag
+//                Shutdown(SHUT_RDWR_MODE);
                 Close();
+                fd_ = INVALID_FD;
             }
         }
 
@@ -86,11 +97,7 @@ namespace fws {
             REUSE_ADDR_MODE,
         };
 
-        enum ShutDownMode {
-            SHUT_RD_MODE = SHUT_RD,
-            SHUT_WR_MODE = SHUT_WR,
-            SHUT_RDWR_MODE = SHUT_RDWR,
-        };
+
 
 
         int SetSockOpt(int level, int optname, const void* optval, socklen_t optlen) {
@@ -162,11 +169,17 @@ namespace fws {
             if (GetAddrFromStr(host_addr, port, con_addr) <= 0) {
                 return -2;
             }
+            int ret;
 #ifdef FWS_ENABLE_FSTACK
-            return ff_connect(fd_, (linux_sockaddr*)&con_addr, sizeof(con_addr));
+            ret = ff_connect(fd_, (linux_sockaddr*)&con_addr, sizeof(con_addr));
 #else
-            return connect(fd_, (sockaddr*)&con_addr, sizeof(con_addr));
+            ret = connect(fd_, (sockaddr*)&con_addr, sizeof(con_addr));
+            if FWS_UNLIKELY(ret < 0) {
+                SetErrorFormatStr("Failed to connect, %s",
+                                  std::strerror(errno));
+            }
 #endif
+            return ret;
         }
 
         int Listen(int queue_limit) {
@@ -185,6 +198,9 @@ namespace fws {
             int new_fd = accept(fd_, addr, addr_len);
 #endif
             if (new_fd < 0) {
+#ifndef FWS_ENABLE_FSTACK
+                SetErrorFormatStr("Accept failed, %s", std::strerror(errno));
+#endif
                 return std::nullopt;
             }
             TcpSocket ret_sock{};
@@ -199,7 +215,7 @@ namespace fws {
         }
 
         int Close() FWS_FUNC_RESTRICT {
-            if (fd_ == 0) {
+            if (fd_ == INVALID_FD) {
                 return 0;
             }
 #ifdef FWS_POLL
@@ -225,7 +241,7 @@ namespace fws {
 #endif
 
 
-            fd_ = 0;
+            fd_ = INVALID_FD;
             return ret;
         }
 

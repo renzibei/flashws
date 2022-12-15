@@ -198,8 +198,8 @@ namespace fws {
     };//namespace detail
 
     FWS_ALWAYS_INLINE FQueue CreateFQueue(int size = 8) {
-#ifdef FWS_ENABLE_FSTACK
         (void)size;
+#ifdef FWS_ENABLE_FSTACK
         int kq_fd = ff_kqueue();
         return FQueue{kq_fd};
 #elif defined(FWS_EPOLL)
@@ -416,7 +416,7 @@ namespace fws {
 //#endif
                     return 0;
                 };
-                int round_robin_r = rand();
+//                int round_robin_r = rand();
                 // Because one event in epoll could generate both read and write
                 // event in kqueue, we only keep the first check r or w event.
                 // And the check order is in round-robin fashion.
@@ -595,27 +595,27 @@ namespace fws {
 //#endif
                     return 0;
                 };
-                int round_robin_r = rand();
+//                int round_robin_r = rand();
                 // Because one event in poll could generate both read and write
                 // event in kqueue, we only keep the first check r or w event.
                 // And the check order is in round-robin fashion.
                 int handle_ret = 0;
-                if (round_robin_r & 1) {
+//                if (round_robin_r & 1) {
                     if (ep_flag & POLLOUT) {
                         handle_ret = handle_out();
                     }
                     else if (ep_flag & POLLIN) {
                         handle_ret = handle_in();
                     }
-                }
-                else {
-                    if (ep_flag & POLLIN) {
-                        handle_ret = handle_in();
-                    }
-                    else if (ep_flag & POLLOUT) {
-                        handle_ret = handle_out();
-                    }
-                }
+//                }
+//                else {
+//                    if (ep_flag & POLLIN) {
+//                        handle_ret = handle_in();
+//                    }
+//                    else if (ep_flag & POLLOUT) {
+//                        handle_ret = handle_out();
+//                    }
+//                }
                 if FWS_UNLIKELY(handle_ret < 0) {
                     return handle_ret;
                 }
