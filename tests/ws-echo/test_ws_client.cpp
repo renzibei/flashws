@@ -293,38 +293,38 @@ namespace test {
                     }
 //                    writable_size = 0;
 //                    printf("writable size: %d\n", writable_size);
-//                    size_t target_size = temp_buf_->size;
-//                    size_t written_size = 0;
-//                    if (writable_size > 0) {
-//
-//                        ssize_t write_ret = cur_sock.WriteFrame(*temp_buf_, writable_size,
-//                                                                 (fws::WSTxFrameType)recv_status_.opcode, true);
-////                        FWS_ASSERT(write_ret >= 0);
-//                        if FWS_UNLIKELY(write_ret < 0) {
-//                            printf("WriteFrame return %zd, %s\n",
-//                                   write_ret, fws::GetErrorStrP());
+                    size_t target_size = temp_buf_->size;
+                    size_t written_size = 0;
+                    if (writable_size > 0) {
+
+                        ssize_t write_ret = cur_sock.WriteFrame(*temp_buf_, writable_size,
+                                                                static_cast<fws::WSTxFrameType>(2U), true);
+//                        FWS_ASSERT(write_ret >= 0);
+                        if FWS_UNLIKELY(write_ret < 0) {
+                            printf("WriteFrame return %zd, %s\n",
+                                   write_ret, fws::GetErrorStrP());
+                            std::abort();
+                        }
+                        written_size = size_t(write_ret);
+                    }
+                    send_bytes_sum += written_size;
+                    if (written_size < target_size) {
+                        int request_write_ret = cur_sock.RequestWriteEvent(fq);
+//                        if FWS_UNLIKELY(request_write_ret < 0) {
+//                            printf("request write return %d, fq %d, fd %d, %s\n",
+//                                   request_write_ret,  fq.fd,
+//                                   cur_sock.tcp_socket().fd(), fws::GetErrorStrP());
 //                            std::abort();
 //                        }
-//                        written_size = size_t(write_ret);
-//                    }
-//                    send_bytes_sum += written_size;
-//                    if (written_size < target_size) {
-                    int request_write_ret = cur_sock.RequestWriteEvent(fq);
-                    if FWS_UNLIKELY(request_write_ret < 0) {
-                        printf("request write return %d, fq %d, fd %d, %s\n",
-                               request_write_ret,  fq.fd,
-                               cur_sock.tcp_socket().fd(), fws::GetErrorStrP());
-                        std::abort();
+                        FWS_ASSERT(request_write_ret == 0);
+//                        printf("Request write ret: %d\n", request_write_ret);
+                        FWS_ASSERT(cur_sock.StopReadRequest(fq) == 0);
                     }
-//                        FWS_ASSERT(request_write_ret == 0);
-//                    printf("Request write ret: %d\n", request_write_ret);
-//                        FWS_ASSERT(cur_sock.StopReadRequest(fq) == 0);
-//                    }
-//                    else {
-//                        *temp_buf_ = fws::RequestBuf(MAX_DATA_LEN + fws::constants::SUGGEST_RESERVE_WS_HDR_SIZE);
-//                        temp_buf_->start_pos = fws::constants::SUGGEST_RESERVE_WS_HDR_SIZE;
-//
-//                    }
+                    else {
+                        *temp_buf_ = fws::RequestBuf(MAX_DATA_LEN + fws::constants::SUGGEST_RESERVE_WS_HDR_SIZE);
+                        temp_buf_->start_pos = fws::constants::SUGGEST_RESERVE_WS_HDR_SIZE;
+
+                    }
 
 
 

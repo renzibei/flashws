@@ -644,6 +644,7 @@ namespace fws {
 //
 //#endif
             if FWS_LIKELY(send_ret >= 0) {
+                // TODO: Use a ring buffer of IOBuffer to buffer the unsent io_buffer
                 FWS_ASSERT_M(size_t(send_ret) == frame_size, "send size should always equal"
                                                              "to frame size");
                 ssize_t sent_pl_size =  send_ret - frame_hdr_size;
