@@ -97,8 +97,24 @@ namespace fws {
             REUSE_ADDR_MODE,
         };
 
+        static int GetSockOpt(int fd, int level, int opt_name, void* FWS_RESTRICT option_value,
+                       socklen_t *FWS_RESTRICT option_len) {
+#ifdef FWS_ENABLE_FSTACK
+            return ff_getsockopt(fd, level, opt_name, option_value, option_len);
+#else
+            return getsockopt(fd, level, opt_name, option_value, option_len);
+#endif
+        }
 
 
+        int GetSockOpt(int level, int opt_name, void* FWS_RESTRICT option_value,
+                       socklen_t *FWS_RESTRICT option_len) {
+#ifdef FWS_ENABLE_FSTACK
+            return ff_getsockopt(fd_, level, opt_name, option_value, option_len);
+#else
+            return getsockopt(fd_, level, opt_name, option_value, option_len);
+#endif
+        }
 
         int SetSockOpt(int level, int optname, const void* optval, socklen_t optlen) {
 #ifdef FWS_ENABLE_FSTACK
@@ -115,6 +131,7 @@ namespace fws {
             return 16384;
 //            return 0;
 #else
+            return 1 << 19;
             int bytes_in_buffer = 0;
             if FWS_UNLIKELY(ioctl(fd_, TIOCOUTQ, &bytes_in_buffer) < 0) {
                 SetErrorFormatStr("Failed to query TIOCOUTQ using ioctl, %s",
@@ -123,7 +140,7 @@ namespace fws {
             }
             int sock_buffer_size = 0;
             socklen_t sb_sz = sizeof(sock_buffer_size);
-            int get_ret = getsockopt(fd_, SOL_SOCKET, SO_SNDBUF, &sock_buffer_size, &sb_sz);
+            int get_ret = GetSockOpt(SOL_SOCKET, SO_SNDBUF, &sock_buffer_size, &sb_sz);
             int64_t bytes_available = sock_buffer_size - bytes_in_buffer;
             FWS_ASSERT(bytes_available >= 0);
             if FWS_UNLIKELY(get_ret < 0) {
@@ -174,11 +191,11 @@ namespace fws {
             ret = ff_connect(fd_, (linux_sockaddr*)&con_addr, sizeof(con_addr));
 #else
             ret = connect(fd_, (sockaddr*)&con_addr, sizeof(con_addr));
+#endif
             if FWS_UNLIKELY(ret < 0) {
                 SetErrorFormatStr("Failed to connect, %s",
                                   std::strerror(errno));
             }
-#endif
             return ret;
         }
 
@@ -245,6 +262,12 @@ namespace fws {
             return ret;
         }
 
+        /**
+         *
+         * @param max_size
+         * @param reserve_size_ahead
+         * @return IOBuffer, if error, size of this IOBuffer will be negative.
+         */
         IOBuffer Read(size_t max_size, size_t reserve_size_ahead = 0) FWS_FUNC_RESTRICT {
             size_t buf_size = max_size + reserve_size_ahead;
             IOBuffer ret_buf = RequestBuf(buf_size);
@@ -255,7 +278,7 @@ namespace fws {
 #endif
             if FWS_UNLIKELY(read_len < 0) {
 //                ReclaimBuf(ret_buf);
-                return IOBuffer{};
+                return IOBuffer{nullptr, read_len, 0, 0};
             }
             ret_buf.start_pos = reserve_size_ahead;
             ret_buf.size = read_len;
@@ -283,14 +306,14 @@ namespace fws {
                       size_t actual_release_size = 0) FWS_FUNC_RESTRICT {
 #ifdef FWS_ENABLE_FSTACK
             ssize_t write_len = ff_write(fd_, io_buf.data + io_buf.start_pos,
-                                         std::min(max_write_size, io_buf.size));
+                                         std::min(max_write_size, (size_t)io_buf.size));
 #else
              ssize_t write_len = write(fd_, io_buf.data + io_buf.start_pos,
-                                          std::min(max_write_size, io_buf.size));
+                                          std::min(max_write_size, (size_t)io_buf.size));
 #endif
             bool actual_release_size_set = actual_release_size != 0;
-            if ((io_buf.size > 0) & ((!actual_release_size_set & (size_t(write_len) == io_buf.size))
-            || (actual_release_size_set & (actual_release_size == io_buf.size)))) {
+            if ((io_buf.size > 0) & ((!actual_release_size_set & (write_len == io_buf.size))
+            || (actual_release_size_set & (actual_release_size == (size_t)io_buf.size)))) {
                 ReclaimBuf(io_buf);
             }
             else {
@@ -299,6 +322,14 @@ namespace fws {
             }
 
             return write_len;
+        }
+
+        ssize_t Write(const void* FWS_RESTRICT buf, size_t size) {
+#ifdef FWS_ENABLE_FSTACK
+            return ff_write(fd_, buf, size);
+#else
+            return write(fd_, buf, size);
+#endif
         }
 
         int Shutdown(ShutDownMode how) FWS_FUNC_RESTRICT {

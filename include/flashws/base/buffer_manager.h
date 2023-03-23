@@ -36,14 +36,14 @@ namespace fws {
         uint8_t *data = nullptr;
 
         // meaningful size of data from start_pos
-        size_t size = 0;
+        ssize_t size = 0;
 
         // data[start_pos] is the first byte of data
         size_t start_pos = 0;
         // capacity of the buf, start from data+0
         size_t capacity = 0;
 
-        IOBuffer(uint8_t *data, size_t size, size_t start_pos, size_t cap) noexcept:
+        IOBuffer(uint8_t *data, ssize_t size, size_t start_pos, size_t cap) noexcept:
                 data(data), size(size), start_pos(start_pos), capacity(cap) {
             if (data != nullptr) {
                 BufferManager::instance().AddBufRefCount((uint8_t*)data);

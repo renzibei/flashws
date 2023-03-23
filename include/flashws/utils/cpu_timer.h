@@ -115,6 +115,18 @@ namespace cpu_t {
         return t;
     }
 
+    CPU_T_ALWAYS_INLINE int64_t NowNsFromEpoch() {
+#ifdef __linux__
+        timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        int64_t ret = ts.tv_sec * 1000000000LL + ts.tv_nsec;
+        return ret;
+#else
+        auto now = std::chrono::high_resolution_clock::now();
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
+#endif
+    }
+
     // from google absl and highwayhash
     // https://github.com/abseil/abseil-cpp/blob/ca80034f59f43eddb6c4c72314572c0e212bf98f/absl/random/internal/nanobenchmark.cc#L215
     CPU_T_ALWAYS_INLINE uint64_t Start64() {
@@ -276,6 +288,7 @@ namespace cpu_t {
     class CpuTimer {
     public:
         using STick = typename std::make_signed<Tick>::type;
+        using UTick = typename std::make_unsigned<Tick>::type;
         explicit CpuTimer(int64_t init_loop_num = 10000000LL): overhead_cycles_(0), ns_per_tick_(1.0) {
             constexpr size_t BANK_SIZE = 256U;
             constexpr size_t OUTER_LOOP_NUM = 1024U;
@@ -344,12 +357,12 @@ namespace cpu_t {
             }
         }
 
-        CPU_T_ALWAYS_INLINE static Tick Start() {
-            return cpu_t::Start<Tick>();
+        CPU_T_ALWAYS_INLINE static UTick Start() {
+            return cpu_t::Start<UTick>();
         }
 
-        CPU_T_ALWAYS_INLINE static Tick Stop() {
-            return cpu_t::Stop<Tick>();
+        CPU_T_ALWAYS_INLINE static UTick Stop() {
+            return cpu_t::Stop<UTick>();
         }
 
         inline double ns_per_tick() const {

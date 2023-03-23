@@ -18,9 +18,9 @@ namespace fws {
 
         template<class EventHandler>
         int HandleFEvent(FQueue& FWS_RESTRICT fq, const FEvent& FWS_RESTRICT event,
-                         EventHandler& FWS_RESTRICT handler) FWS_FUNC_RESTRICT {
-            if FWS_UNLIKELY(event.flags & fws::FEV_ERROR) {
-                SetErrorFormatStr("Error in event, flags: %u", event.flags);
+                         EventHandler& FWS_RESTRICT handler) {
+            if FWS_UNLIKELY(event.has_error()) {
+                SetErrorFormatStr("Error in event, flags: %u", event.socket_err_code());
                 return -1;
             }
             else {
@@ -28,15 +28,15 @@ namespace fws {
 
 
 #ifdef FWS_ENABLE_FSTACK
-                int available = static_cast<int>(event.data);
+                int available = event.available_accept_size();
 #ifdef FWS_DEV_DEBUG
                 fprintf(stderr, "ws server %d get %d sockets to accept\n",
                         tcp_socket_.fd(), available);
 #endif
-                size_t need_fevent_size = sizeof(fws::FEvent) * available;
-                IOBuffer events_buf = RequestBuf(need_fevent_size);
-                FEvent* ev_start = (FEvent*)(events_buf.data);
-                size_t ev_cnt = 0;
+//                size_t need_fevent_size = sizeof(fws::FEvent) * available;
+//                IOBuffer events_buf = RequestBuf(need_fevent_size);
+//                FEvent* ev_start = (FEvent*)(events_buf.data);
+//                size_t ev_cnt = 0;
 #endif
 
                 while(true) {
@@ -70,25 +70,30 @@ namespace fws {
                             return -7;
                         }
                     }
-#ifdef FWS_ENABLE_FSTACK
-                    ev_start[ev_cnt++] = FEvent(new_fd, FEVFILT_READ, FEV_ADD, FEFFLAG_NONE,
-                                      0, nullptr);
-#else
-                    FEvent read_event(new_fd, FEVFILT_READ, FEV_ADD, FEFFLAG_NONE,
-                                      0, nullptr);
-                    if FWS_UNLIKELY(fws::FEventWait(fq, &read_event, 1, nullptr, 0, nullptr) < 0) {
+                    int add_read_ret = AddFEvent(fq, new_fd, FEVAC_READ);
+                    if FWS_UNLIKELY(add_read_ret < 0) {
+                        SetErrorFormatStr("Error in add read event for new socket");
                         return -5;
                     }
-#endif
+//#ifdef FWS_ENABLE_FSTACK
+//                    ev_start[ev_cnt++] = FEvent(new_fd, FEVFILT_READ, FEV_ADD, FEFFLAG_NONE,
+//                                      0, nullptr);
+//#else
+//                    FEvent read_event(new_fd, FEVFILT_READ, FEV_ADD, FEFFLAG_NONE,
+//                                      0, nullptr);
+//                    if FWS_UNLIKELY(fws::FEventWait(fq, &read_event, 1, nullptr, 0, nullptr) < 0) {
+//                        return -5;
+//                    }
+//#endif
                     fws::WSServerSocket new_wsocket{};
                     new_wsocket.Init(new_tcp_sock);
                     handler.OnNewTcpConnection(new_wsocket);
                 }
-#ifdef FWS_ENABLE_FSTACK
-                if FWS_UNLIKELY(fws::FEventWait(fq, ev_start, ev_cnt, nullptr, 0, nullptr) < 0) {
-                        return -6;
-                }
-#endif
+//#ifdef FWS_ENABLE_FSTACK
+//                if FWS_UNLIKELY(fws::FEventWait(fq, ev_start, ev_cnt, nullptr, 0, nullptr) < 0) {
+//                        return -6;
+//                }
+//#endif
             }
             return 0;
         }
