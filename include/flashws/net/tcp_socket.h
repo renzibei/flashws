@@ -132,24 +132,24 @@ namespace fws {
 //            return 0;
 #else
             return 1 << 19;
-            int bytes_in_buffer = 0;
-            if FWS_UNLIKELY(ioctl(fd_, TIOCOUTQ, &bytes_in_buffer) < 0) {
-                SetErrorFormatStr("Failed to query TIOCOUTQ using ioctl, %s",
-                                  std::strerror(errno));
-                return -1;
-            }
-            int sock_buffer_size = 0;
-            socklen_t sb_sz = sizeof(sock_buffer_size);
-            int get_ret = GetSockOpt(SOL_SOCKET, SO_SNDBUF, &sock_buffer_size, &sb_sz);
-            int64_t bytes_available = sock_buffer_size - bytes_in_buffer;
-            FWS_ASSERT(bytes_available >= 0);
-            if FWS_UNLIKELY(get_ret < 0) {
-                SetErrorFormatStr("Failed to query SO_SNDBUF using ioctl for fd %d, %s",
-                                  fd_, std::strerror(errno));
-                return get_ret;
-            }
-            size_t ret = std::min(size_t(bytes_available), constants::MAX_WRITABLE_SIZE_ONE_TIME);
-            return ret;
+//            int bytes_in_buffer = 0;
+//            if FWS_UNLIKELY(ioctl(fd_, TIOCOUTQ, &bytes_in_buffer) < 0) {
+//                SetErrorFormatStr("Failed to query TIOCOUTQ using ioctl, %s",
+//                                  std::strerror(errno));
+//                return -1;
+//            }
+//            int sock_buffer_size = 0;
+//            socklen_t sb_sz = sizeof(sock_buffer_size);
+//            int get_ret = GetSockOpt(SOL_SOCKET, SO_SNDBUF, &sock_buffer_size, &sb_sz);
+//            int64_t bytes_available = sock_buffer_size - bytes_in_buffer;
+//            FWS_ASSERT(bytes_available >= 0);
+//            if FWS_UNLIKELY(get_ret < 0) {
+//                SetErrorFormatStr("Failed to query SO_SNDBUF using ioctl for fd %d, %s",
+//                                  fd_, std::strerror(errno));
+//                return get_ret;
+//            }
+//            size_t ret = std::min(size_t(bytes_available), constants::MAX_WRITABLE_SIZE_ONE_TIME);
+//            return ret;
 #endif
         }
 
@@ -192,7 +192,7 @@ namespace fws {
 #else
             ret = connect(fd_, (sockaddr*)&con_addr, sizeof(con_addr));
 #endif
-            if FWS_UNLIKELY(ret < 0) {
+            if FWS_UNLIKELY(ret < 0 && errno != EINPROGRESS) {
                 SetErrorFormatStr("Failed to connect, %s",
                                   std::strerror(errno));
             }
@@ -214,10 +214,8 @@ namespace fws {
 #else
             int new_fd = accept(fd_, addr, addr_len);
 #endif
-            if (new_fd < 0) {
-#ifndef FWS_ENABLE_FSTACK
+            if (new_fd < 0 && errno != EWOULDBLOCK) {
                 SetErrorFormatStr("Accept failed, %s", std::strerror(errno));
-#endif
                 return std::nullopt;
             }
             TcpSocket ret_sock{};

@@ -187,7 +187,7 @@ namespace test {
                     size_t target_size = io_buf_.size;
                     size_t written_size = 0;
                     if (writable_size > 0) {
-                        ssize_t write_ret = ws_socket.WriteFrame(io_buf_, writable_size,
+                        ssize_t write_ret = ws_socket.WriteFrame(*this, io_buf_, writable_size,
                                                                  (fws::WSTxFrameType)con_ctx.status.opcode, true);
                         FWS_ASSERT(write_ret >= 0);
                         written_size = size_t(write_ret);
@@ -228,11 +228,12 @@ namespace test {
 
 
         int OnCloseConnection(fws::WSServerSocket &w_socket, uint32_t status_code, std::string_view reason) {
-            std::string reason_str(reason);
+            if (status_code != 1000U) {
+                std::string reason_str(reason);
+                printf("OnCloseConnection called, fd: %d, status_code %u, reason: %s\n",
+                       w_socket.tcp_socket().fd(), status_code, reason_str.c_str());
+            }
             int fd = w_socket.tcp_socket().fd();
-
-            printf("OnCloseConnection called, fd: %d, status_code %u, reason: %s\n",
-                   fd, status_code, reason_str.c_str());
             auto find_it = fd_to_socks.find(fd);
             FWS_ASSERT(find_it != fd_to_socks.end());
 //            fd_to_socks.erase(find_it);
@@ -246,59 +247,65 @@ namespace test {
             return 0;
         }
 
-        int OnWritable(fws::WSServerSocket &w_socket, size_t available_size) {
-            auto find_it = fd_to_socks.find(w_socket.tcp_socket().fd());
-            FWS_ASSERT(find_it != fd_to_socks.end());
-//            printf("OnWritable called, fd %d\n", w_socket.tcp_socket().fd());
-            auto& con_ctx = find_it->second;
-//            auto &buf = io_buf_;
-            auto &buf = con_ctx.io_buf;
-//            auto& buf = buf_deque.front();
-//            auto status = status_deque.front();
-            size_t target_size = buf.size;
-//            bool fin = false;
-//            if (available_size >= target_size + fws::GetTxWSFrameHdrSize<false>(target_size)
-////                && status.is_msg_end
-//                ) {
-//                fin = true;
-//            }
-            // TODO: Test the hash of client
-//            buf.data[buf.start_pos + buf.size - 4] = 0x8a;
-            ssize_t write_ret = w_socket.WriteFrame(buf, available_size,
-                                                    static_cast<fws::WSTxFrameType>(con_ctx.status.opcode), true);
-            if (write_ret < 0) {
-                printf("Error, write return %zd\n", write_ret);
-                std::abort();
-            }
-
-            last_interval_send_bytes += write_ret;
-
-//            printf("Write %zd of %zu bytes, ava size: %zu\n",
-//                   write_ret, target_size, available_size);
-
-            if (size_t(write_ret) == target_size) {
-
-//                buf_deque.pop_front();
-//                status_deque.pop_front();
-//                if (buf_deque.empty()) {
-                ++last_interval_send_msg_cnt;
-                CountStats();
-                buf = fws::RequestBuf(MAX_DATA_LEN + fws::constants::SUGGEST_RESERVE_WS_HDR_SIZE);
-                buf.start_pos = fws::constants::SUGGEST_RESERVE_WS_HDR_SIZE;
-                int stop_ret = w_socket.StopWriteRequest(fq);
-                FWS_ASSERT(stop_ret >= 0);
-//                has_requested_write = false;
-//                    if (status.is_msg_end) {
-//                        w_socket.CloseCon<true>(1000, "");
-//                    }
-
-//                }
-            }
-            return 0;
-        }
+//        int OnWritable(fws::WSServerSocket &w_socket, size_t available_size) {
+////            printf("Shouldn't be called\n");
+////            auto find_it = fd_to_socks.find(w_socket.tcp_socket().fd());
+////            FWS_ASSERT(find_it != fd_to_socks.end());
+//////            printf("OnWritable called, fd %d\n", w_socket.tcp_socket().fd());
+////            auto& con_ctx = find_it->second;
+//////            auto &buf = io_buf_;
+////            auto &buf = con_ctx.io_buf;
+//////            auto& buf = buf_deque.front();
+//////            auto status = status_deque.front();
+////            size_t target_size = buf.size;
+//////            bool fin = false;
+//////            if (available_size >= target_size + fws::GetTxWSFrameHdrSize<false>(target_size)
+////////                && status.is_msg_end
+//////                ) {
+//////                fin = true;
+//////            }
+////            // TODO: Test the hash of client
+//////            buf.data[buf.start_pos + buf.size - 4] = 0x8a;
+////            ssize_t write_ret = w_socket.WriteFrame(*this, buf, available_size,
+////                                                    static_cast<fws::WSTxFrameType>(con_ctx.status.opcode), true);
+////            if (write_ret < 0) {
+////                printf("Error, write return %zd\n", write_ret);
+////                std::abort();
+////            }
+////
+////            last_interval_send_bytes += write_ret;
+////
+//////            printf("Write %zd of %zu bytes, ava size: %zu\n",
+//////                   write_ret, target_size, available_size);
+////
+////            if (size_t(write_ret) == target_size) {
+////
+//////                buf_deque.pop_front();
+//////                status_deque.pop_front();
+//////                if (buf_deque.empty()) {
+////                ++last_interval_send_msg_cnt;
+////                CountStats();
+////                buf = fws::RequestBuf(MAX_DATA_LEN + fws::constants::SUGGEST_RESERVE_WS_HDR_SIZE);
+////                buf.start_pos = fws::constants::SUGGEST_RESERVE_WS_HDR_SIZE;
+////                int stop_ret = w_socket.StopWriteRequest(fq);
+////                FWS_ASSERT(stop_ret >= 0);
+//////                has_requested_write = false;
+//////                    if (status.is_msg_end) {
+//////                        w_socket.CloseCon<true>(1000, "");
+//////                    }
+////
+//////                }
+////            }
+//            return 0;
+//        }
 
         int OnNeedRequestWrite(fws::WSServerSocket &w_socket) {
             return w_socket.RequestWriteEvent(fq);
+        }
+
+        int OnNeedStopWriteRequest(fws::WSServerSocket &w_socket) {
+//            printf("OnNeedStopWriteRequest called\n");
+            return w_socket.StopWriteRequest(fq);
         }
     };
 
@@ -314,23 +321,25 @@ namespace test {
             auto &event = ctx->wait_evs[k];
             int cur_fd = event.fd();
             auto &handler = *ctx;
-            if FWS_UNLIKELY(event.has_error()) {
-                printf("event error, flags: %u, fd: %d\n",
-                       event.socket_err_code(), cur_fd);
-                std::abort();
-            }
-            else if(event.is_eof()) {
-                // TODO: handle close in EventHandler
-                FWS_ASSERT(cur_fd != ctx->ws_server.tcp_socket().fd());
-                auto find_it = ctx->fd_to_socks.find(cur_fd);
-                FWS_ASSERT(find_it != ctx->fd_to_socks.end());
-                int error_code = event.socket_err_code();
-                printf("Client exit. fd=%d error=%d, for eof\n",
-                       cur_fd, error_code);
-                find_it->second.socket.Close(fws::WS_ABNORMAL_CLOSE, {});
-                ctx->fd_to_socks.erase(find_it);
-            }
-            else if (cur_fd == ctx->ws_server.tcp_socket().fd()) {
+//            if FWS_UNLIKELY(event.has_error()) {
+//                int error_code = event.socket_err_code();
+//                printf("event error, flags: %u, fd: %d\n",
+//                       error_code, cur_fd);
+//                printf("%s\n", std::strerror(error_code));
+//                std::abort();
+//            }
+//            else if(event.is_eof()) {
+//                // TODO: handle close in EventHandler
+//                FWS_ASSERT(cur_fd != ctx->ws_server.tcp_socket().fd());
+//                auto find_it = ctx->fd_to_socks.find(cur_fd);
+//                FWS_ASSERT(find_it != ctx->fd_to_socks.end());
+//                int error_code = event.socket_err_code();
+//                printf("Client exit. fd=%d error=%d, for eof\n",
+//                       cur_fd, error_code);
+//                find_it->second.socket.Close(*ctx, fws::WS_ABNORMAL_CLOSE, {});
+//                ctx->fd_to_socks.erase(find_it);
+//            }
+            if (cur_fd == ctx->ws_server.tcp_socket().fd()) {
 //                printf("One event with ws server fd\n");
                 int ret = ctx->ws_server.HandleFEvent(ctx->fq, event, handler);
                 if (ret < 0) {

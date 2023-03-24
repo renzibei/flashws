@@ -441,16 +441,20 @@ namespace fws {
         else if (cur_events != target_events) {
             op = EPOLL_CTL_MOD;
         }
-
-        FEvent change_ev(target_events, fd);
-        int epoll_ctl_ret = epoll_ctl(fq.fd, op, fd, (epoll_event*)&change_ev);
-        if FWS_UNLIKELY(epoll_ctl_ret < 0) {
-            SetErrorFormatStr("epoll return %d, %s",
-                              epoll_ctl_ret, std::strerror(errno));
+        // If need to modify events
+        if FWS_LIKELY(op != 0) {
+            FEvent change_ev(target_events, fd);
+            int epoll_ctl_ret = epoll_ctl(fq.fd, op, fd, (epoll_event*)&change_ev);
+            if FWS_UNLIKELY(epoll_ctl_ret < 0) {
+                SetErrorFormatStr("epoll return %d, %s",
+                                  epoll_ctl_ret, std::strerror(errno));
+                return epoll_ctl_ret;
+            }
+            find_it->second.cur_evs = target_events;
             return epoll_ctl_ret;
         }
-        find_it->second.cur_evs = target_events;
-        return epoll_ctl_ret;
+        return 0;
+
     }
 
     int DeleteFEvent(FQueue &fq, int fd, FEventAction action) {

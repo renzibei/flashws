@@ -24,6 +24,7 @@ namespace fws {
             int tcp_init_ret = tcp_socket_.Init();
             client_status_ = CLOSED_STATUS;
             if FWS_UNLIKELY(tcp_init_ret < 0) {
+                SetErrorFormatStr("Failed to create tcp socket, %s", std::strerror(errno));
                 return tcp_init_ret;
             }
             int tcp_set_nb_ret = tcp_socket_.SetNonBlock();
@@ -49,10 +50,14 @@ namespace fws {
             return client_status_ == CLOSED_STATUS;
         }
 
-        int Close(WSStatusCose close_code, std::string_view reason) {
-            FWS_ASSERT(!IsWaitForClose());
+        template<class EventHandler>
+        int Close(EventHandler &handler, WSStatusCose close_code, std::string_view reason) {
+//            FWS_ASSERT(!IsWaitForClose());
+            if (IsWaitForClose()) {
+                return 1;
+            }
             client_status_ = NOT_RECV_NOT_SENT_CLOSE;
-            int handle_ret = PrepareSendClose(close_code, reason);
+            int handle_ret = PrepareSendClose(handler, close_code, reason);
             return handle_ret;
         }
 
@@ -66,14 +71,17 @@ namespace fws {
                 return -25;
             }
             if FWS_UNLIKELY(event.has_error()) {
-                SetErrorFormatStr("FEV_ERROR in event flags: %u", event.socket_err_code());
+                int error_code = event.socket_err_code();
+                SetErrorFormatStr("FEV_ERROR in event flags: %d, %s", error_code, std::strerror(error_code));
                 client_status_ = CLOSED_STATUS;
-                handler.OnCloseConnection(*this, fws::WS_ABNORMAL_CLOSE, {});
+                handler.OnCloseConnection(*this, fws::WS_ABNORMAL_CLOSE, GetErrorStrV());
                 ret = -2;
             }
             else if FWS_UNLIKELY(event.is_eof()) {
+                auto old_status = client_status_;
                 client_status_ = CLOSED_STATUS;
-                handler.OnCloseConnection(*this, fws::WS_ABNORMAL_CLOSE, {});
+                SetErrorFormatStr("fd %d eof, ws socket status: %d", event.fd(), old_status);
+                handler.OnCloseConnection(*this, fws::WS_ABNORMAL_CLOSE, GetErrorStrV());
             }
             else if (event.is_readable()) {
                 size_t available_size = event.readable_size();
@@ -86,9 +94,9 @@ namespace fws {
                         ret = -2;
                     }
                     client_status_ = CLOSED_STATUS;
-                    handler.OnCloseConnection(*this, fws::WS_ABNORMAL_CLOSE, {});
+                    handler.OnCloseConnection(*this, fws::WS_ABNORMAL_CLOSE, GetErrorStrV());
                 }
-                else if FWS_LIKELY(client_status_ == OPEN_STATUS) {
+                else if FWS_LIKELY((client_status_ == OPEN_STATUS) | (client_status_ == NOT_RECV_HAS_SENT_CLOSE)) {
                     ret = OnRecvData(handler, recv_buf);
 
                 }
@@ -112,15 +120,17 @@ namespace fws {
             if (event.is_writable()) {
                 size_t available_size = event.send_buf_size();
                 if FWS_LIKELY(client_status_ == OPEN_STATUS) {
-                    if FWS_UNLIKELY(need_send_control_msg_) {
-                        ssize_t handle_control_msg_ret = HandleUnsentControlMsgOnWritable(available_size);
-                        if FWS_UNLIKELY(handle_control_msg_ret < 0) {
-                            return handle_control_msg_ret;
-                        }
-                        available_size -= handle_control_msg_ret;
-                    }
-                    available_size = std::min(available_size, constants::MAX_WRITABLE_SIZE_ONE_TIME);
-                    ret = handler.OnWritable(*this, available_size);
+                    TrySendBufferedFrames(handler);
+//                    if FWS_UNLIKELY(need_send_control_msg_) {
+//                        ssize_t handle_control_msg_ret = HandleUnsentControlMsgOnWritable(handler, available_size);
+//                        if FWS_UNLIKELY(handle_control_msg_ret < 0) {
+//                            return handle_control_msg_ret;
+//                        }
+//                        available_size -= handle_control_msg_ret;
+//                    }
+                    ret = 0;
+//                    available_size = std::min(available_size, constants::MAX_WRITABLE_SIZE_ONE_TIME);
+//                    ret = handler.OnWritable(*this, available_size);
                 }
                 else if (client_status_ == WAIT_TCP_CONNECT) {
                     ret = SendHandshakeRequest(handler);
@@ -145,17 +155,18 @@ namespace fws {
         // the size of control frame into account. Only when the sum of hdr
         // size and payload size is no less than
         // writable_size, will we make this frame the last frame of a msg.
-        FWS_ALWAYS_INLINE ssize_t WriteFrame(IOBuffer& io_buf, size_t writable_size,
+        template<class EventHandler>
+        FWS_ALWAYS_INLINE ssize_t WriteFrame(EventHandler &handler, IOBuffer& io_buf, size_t writable_size,
                                              WSTxFrameType frame_type,
                                              bool last_frame_if_possible) {
-            if FWS_UNLIKELY(need_send_control_msg_) {
-                ssize_t handle_control_msg_ret = HandleUnsentControlMsgOnWritable(writable_size);
-                if FWS_UNLIKELY(handle_control_msg_ret < 0) {
-                    return handle_control_msg_ret;
-                }
-                writable_size -= handle_control_msg_ret;
-            }
-            return SendFrame(io_buf, writable_size, frame_type, last_frame_if_possible);
+//            if FWS_UNLIKELY(need_send_control_msg_) {
+//                ssize_t handle_control_msg_ret = HandleUnsentControlMsgOnWritable(handler, writable_size);
+//                if FWS_UNLIKELY(handle_control_msg_ret < 0) {
+//                    return handle_control_msg_ret;
+//                }
+//                writable_size -= handle_control_msg_ret;
+//            }
+            return SendFrame(handler, io_buf, frame_type, last_frame_if_possible);
         }
 
         int Connect(const char* server_ip, uint16_t host_port,
@@ -200,6 +211,8 @@ namespace fws {
         bool HasSentClose() const {
             return client_status_ & 8U;
         }
+
+
 
         int OnRecvCloseFrame() {
             // TODO: finish
@@ -466,9 +479,9 @@ namespace fws {
                 data = lf + 2;
             }
             client_status_ = CLOSED_STATUS;
-            tcp_socket_.Close();
-            handler.OnFailToConnect(*this, std::string_view(data_start, data_end - data_start));
+//            tcp_socket_.Close();
             SetErrorFormatStr("The http response from server is not accepted");
+            handler.OnFailToConnect(*this, std::string_view(data_start, data_end - data_start));
 //            ReclaimBuf(io_buf);
             return 1;
         }
@@ -491,6 +504,7 @@ namespace fws {
                 if (stop_write_ret < 0) {
                     client_status_ = CLOSED_STATUS;
                     tcp_socket_.Close();
+                    SetErrorFormatStr("Failed to request write event");
                     return -1;
                 }
                 client_status_ = WAIT_HTTP_REPLY;

@@ -30,7 +30,7 @@ if(NOT MSVC)
     target_compile_options(
             test_ws_client
             PRIVATE
-            -O3
+#            -O3
 #            -g
             -Wall -Wextra
 #            -fsanitize=address
@@ -39,7 +39,7 @@ if(NOT MSVC)
     target_compile_options(
             test_ws_server
             PRIVATE
-            -O3
+#            -O3
 #            -g
             -Wall -Wextra
 #            -fsanitize=address

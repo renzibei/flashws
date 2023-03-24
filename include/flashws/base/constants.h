@@ -19,7 +19,7 @@ namespace fws {
 #ifdef FWS_ENABLE_FSTACK
         constexpr inline size_t MAX_WRITABLE_SIZE_ONE_TIME = 65536;
 #else
-        constexpr inline size_t MAX_WRITABLE_SIZE_ONE_TIME = 40000;
+        constexpr inline size_t MAX_WRITABLE_SIZE_ONE_TIME = 16384;
 #endif
 //        constexpr inline size_t MAX_WRITABLE_SIZE_ONE_TIME = 1UL << 21;
 

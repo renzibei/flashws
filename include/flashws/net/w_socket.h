@@ -7,6 +7,7 @@
 #include "flashws/crypto/ws_mask.h"
 #include "flashws/crypto/rng.h"
 #include "flashws/base/hw_endian.h"
+#include "flashws/utils/ring_buffer.h"
 
 
 namespace fws {
@@ -73,7 +74,8 @@ namespace fws {
             return tcp_socket_;
         }
 
-        int PrepareSendClose(uint16_t status_code, std::string_view reason) {
+        template<class EventHandler>
+        int PrepareSendClose(EventHandler& handler, uint16_t status_code, std::string_view reason) {
             if FWS_UNLIKELY(sizeof(status_code) + reason.size() > constants::WS_MAX_CONTROL_FRAME_SIZE) {
                 SetErrorFormatStr("Control size must be smaller than %zu",
                                   constants::WS_MAX_CONTROL_FRAME_SIZE);
@@ -88,8 +90,9 @@ namespace fws {
             data += sizeof(status_code);
             memcpy(data, reason.data(), reason.size());
             buf_.size = sizeof(status_code) + reason.size();
-            need_send_control_msg_ = true;
-            unsent_control_msg_opcode_ = WS_OPCODE_CLOSE;
+            SendControlMsg(handler, buf_, WS_CLOSE_FRAME);
+//            need_send_control_msg_ = true;
+//            unsent_control_msg_opcode_ = WS_OPCODE_CLOSE;
             return 0;
         }
 
@@ -179,14 +182,22 @@ namespace fws {
         uint8_t last_rx_fin_flag_;
         bool is_rx_control_frame_;
         bool last_msg_not_fin_;
-        bool need_send_control_msg_;
-        uint8_t unsent_control_msg_opcode_;
+//        bool need_send_control_msg_;
+//        uint8_t unsent_control_msg_opcode_;
         uint32_t last_rx_hdr_part_len_;
         IOBuffer buf_;
 
         uint8_t rx_ws_hdr_buf_[max_rx_frame_hdr_size()];
         // buffer for http request, reply, and control frame
 
+        struct WaitForSentFrame{
+            IOBuffer buf;
+            WSTxFrameType frame_type;
+
+            WaitForSentFrame(IOBuffer &&o_buf, WSTxFrameType type): buf(std::move(o_buf)), frame_type(type) {}
+        };
+
+        frb::RingBuffer<WaitForSentFrame, FlashAllocator<WaitForSentFrame>> unsent_buf_ring_;
 
 
 
@@ -197,7 +208,7 @@ namespace fws {
             is_rx_control_frame_ = false;
             last_msg_not_fin_ = false;
             last_rx_hdr_part_len_ = 0;
-            need_send_control_msg_ = false;
+//            need_send_control_msg_ = false;
             buf_ = {nullptr, size_t(0U), 0U, 0U};
 //            open_ = 0;
             return 0;
@@ -302,6 +313,18 @@ namespace fws {
         }
 
         template<class EventHandler>
+        int SendControlMsg(EventHandler &handler, IOBuffer &io_buf, WSTxFrameType frame_type) {
+            if (unsent_buf_ring_.empty()) {
+                int send_ret = SendFrame(handler, io_buf, frame_type, true);
+                return send_ret;
+            }
+            else {
+                unsent_buf_ring_.emplace_back(std::move(io_buf), frame_type);
+            }
+            return 0;
+        }
+
+        template<class EventHandler>
         int OnRecvData(EventHandler& handler, IOBuffer &io_buf) {
             uint8_t * FWS_RESTRICT data = io_buf.data + io_buf.start_pos;
 
@@ -397,7 +420,7 @@ namespace fws {
 //                            pl_size_available, recv_status_, buf_.size);
 //#endif
                     if (recv_status_ == WAIT_FRAME_HEAD) {
-                        if (buf_.size == 0U) {
+                        if (buf_.data == nullptr) {
                             buf_ = RequestBuf(constants::WS_MAX_CONTROL_FRAME_SIZE);
                         }
                         else {
@@ -422,13 +445,15 @@ namespace fws {
 
                 if FWS_UNLIKELY(is_frame_end & is_rx_control_frame_) {
                     if FWS_UNLIKELY(opcode == WS_OPCODE_PING) {
+//                        SendFrame(handler, buf_, WS_OPCODE_PONG, true);
                         // ping frame should already be copied to control buf
-                        int req_write_ret = handler.OnNeedRequestWrite(*static_cast<Derived*>(this));
-                        if FWS_UNLIKELY(req_write_ret < 0) {
-                            return req_write_ret;
-                        }
-                        need_send_control_msg_ = true;
-                        unsent_control_msg_opcode_ = WS_OPCODE_PONG;
+//                        int req_write_ret = handler.OnNeedRequestWrite(*static_cast<Derived*>(this));
+//                        if FWS_UNLIKELY(req_write_ret < 0) {
+//                            return req_write_ret;
+//                        }
+                        SendControlMsg(handler, buf_, WS_PONG_FRAME);
+//                        need_send_control_msg_ = true;
+//                        unsent_control_msg_opcode_ = WS_OPCODE_PONG;
 
                     }
                     else if FWS_UNLIKELY(opcode == WS_OPCODE_CLOSE) {
@@ -447,19 +472,22 @@ namespace fws {
 //                        bool is_wait_close = static_cast<Derived*>(this)->IsWaitForClose();
                         bool has_recv_close = static_cast<Derived*>(this)->HasRecvClose();
                         bool has_sent_close = static_cast<Derived*>(this)->HasSentClose();
-                        if (!has_sent_close) {
-                            int req_write_ret = handler.OnNeedRequestWrite(*static_cast<Derived*>(this));
-                            if FWS_UNLIKELY(req_write_ret < 0) {
-                                return req_write_ret;
-                            }
-                            need_send_control_msg_ = true;
-                            unsent_control_msg_opcode_ = WS_OPCODE_CLOSE;
-                        }
+
                         if FWS_LIKELY(!has_recv_close) {
                             int handle_ret = static_cast<Derived*>(this)->OnRecvCloseFrame();
                             if FWS_UNLIKELY(handle_ret < 0) {
                                 return handle_ret;
                             }
+                        }
+                        if (!has_sent_close) {
+
+//                            int req_write_ret = handler.OnNeedRequestWrite(*static_cast<Derived*>(this));
+//                            if FWS_UNLIKELY(req_write_ret < 0) {
+//                                return req_write_ret;
+//                            }
+                            SendControlMsg(handler, buf_, WS_CLOSE_FRAME);
+//                            need_send_control_msg_ = true;
+//                            unsent_control_msg_opcode_ = WS_OPCODE_CLOSE;
                         }
                         handler.OnCloseConnection(*static_cast<Derived*>(this), status_code, reason);
                         // TODO: call on Close when the close handshake is over
@@ -518,6 +546,42 @@ namespace fws {
             return 0;
         }
 
+        template<class EventHandler>
+        int TrySendBufferedFrames(EventHandler &handler) {
+            while(!unsent_buf_ring_.empty()) {
+                auto &cur_frame = unsent_buf_ring_.front();
+                auto frame_type = cur_frame.frame_type;
+                auto &cur_buf = cur_frame.buf;
+                size_t buf_size = cur_buf.size;
+                size_t this_time_send_size = std::min(buf_size, constants::MAX_WRITABLE_SIZE_ONE_TIME);
+                ssize_t send_ret = tcp_socket_.Write(cur_buf, this_time_send_size);
+                if FWS_UNLIKELY(send_ret < 0) {
+                    if FWS_LIKELY(errno == EAGAIN) {
+                        break;
+                    }
+                    return send_ret;
+                }
+                size_t send_size = send_ret;
+
+                if (send_size == buf_size) {
+                    if (frame_type == WS_CLOSE_FRAME) {
+                        static_cast<Derived*>(this)->OnSentCloseFrame();
+                    }
+                    // send finish
+                    unsent_buf_ring_.pop_front();
+                    if (unsent_buf_ring_.empty()) {
+                        handler.OnNeedStopWriteRequest(*static_cast<Derived*>(this));
+                    }
+                }
+//                else if (send_size < this_time_send_size) {
+                else {
+                    // send buffer of OS is full now
+                    break;
+                }
+                // else send_size == constants::MAX_WRITABLE_SIZE_ONE_TIME
+            }
+            return 0;
+        }
 
 
         FWS_ALWAYS_INLINE static char ToLowerCase(char c) {
@@ -542,41 +606,44 @@ namespace fws {
             fws::Base64Encode(sha1_buf, 20, out_sec_key);
         }
 
-        ssize_t HandleUnsentControlMsgOnWritable(size_t writable_size)  {
-            FWS_ASSERT(need_send_control_msg_);
-            FWS_ASSERT(buf_.size > 0);
-            size_t estimate_hdr_size = GetTxWSFrameHdrSize<is_server>(buf_.size);
-            size_t frame_size = estimate_hdr_size + buf_.size;
-            if FWS_UNLIKELY(frame_size > writable_size) {
-                return 0;
-            }
-            size_t payload_size = buf_.size;
-            ssize_t send_ret = SendFrame(buf_, writable_size,
-                         static_cast<fws::WSTxFrameType>(unsent_control_msg_opcode_), true);
-            if FWS_UNLIKELY(size_t(send_ret) < payload_size) {
-                SetErrorFormatStr("Failed to send control msg as a frame, send ret: %zd,"
-                                  "payload size: %zu, opcode: %u",
-                                  send_ret, payload_size, unsent_control_msg_opcode_);
-                return -11;
-            }
-            buf_.size = 0;
-            buf_.data = nullptr;
-            need_send_control_msg_ = false;
-            if (unsent_control_msg_opcode_ == WS_OPCODE_CLOSE) {
-                static_cast<Derived*>(this)->OnSentCloseFrame();
-            }
-            return frame_size;
-        }
+//        template<class EventHandler>
+//        ssize_t HandleUnsentControlMsgOnWritable(EventHandler &handler, size_t writable_size)  {
+//            FWS_ASSERT(need_send_control_msg_);
+//            FWS_ASSERT(buf_.size > 0);
+//            size_t estimate_hdr_size = GetTxWSFrameHdrSize<is_server>(buf_.size);
+//            size_t frame_size = estimate_hdr_size + buf_.size;
+//            if FWS_UNLIKELY(frame_size > writable_size) {
+//                return 0;
+//            }
+//            size_t payload_size = buf_.size;
+//            ssize_t send_ret = SendFrame(handler, buf_,
+//                         static_cast<fws::WSTxFrameType>(unsent_control_msg_opcode_), true);
+//            if FWS_UNLIKELY(size_t(send_ret) < payload_size) {
+//                SetErrorFormatStr("Failed to send control msg as a frame, send ret: %zd,"
+//                                  "payload size: %zu, opcode: %u",
+//                                  send_ret, payload_size, unsent_control_msg_opcode_);
+//                return -11;
+//            }
+//            buf_.size = 0;
+//            buf_.data = nullptr;
+//            need_send_control_msg_ = false;
+//            if (unsent_control_msg_opcode_ == WS_OPCODE_CLOSE) {
+//                static_cast<Derived*>(this)->OnSentCloseFrame();
+//            }
+//            return frame_size;
+//        }
 
-        ssize_t SendFrame(IOBuffer& FWS_RESTRICT io_buf, size_t writable_size,
+        template<class EventHandler>
+        ssize_t SendFrame(EventHandler &handler, IOBuffer& FWS_RESTRICT io_buf,
                           WSTxFrameType frame_type,
                           bool last_frame_if_possible) {
-            size_t first_estimate_hdr_size = GetTxWSFrameHdrSize<is_server>(io_buf.size);
-            if FWS_UNLIKELY(writable_size < first_estimate_hdr_size) {
-                return 0;
-            }
-            size_t send_payload_size = std::min((size_t)io_buf.size, writable_size - first_estimate_hdr_size);
-
+//            size_t first_estimate_hdr_size = GetTxWSFrameHdrSize<is_server>(io_buf.size);
+//            if FWS_UNLIKELY(writable_size < first_estimate_hdr_size) {
+//                return 0;
+//            }
+//            size_t send_payload_size = std::min((size_t)io_buf.size, writable_size - first_estimate_hdr_size);
+            TrySendBufferedFrames(handler);
+            size_t send_payload_size = io_buf.size;
             size_t expect_ws_hdr_size = GetTxWSFrameHdrSize<is_server>(send_payload_size);
             FWS_ASSERT_M(io_buf.start_pos >= expect_ws_hdr_size,
                          "IOBuffer start_pos should be larger enough to hold the ws frame header!");
@@ -594,6 +661,7 @@ namespace fws {
             uint8_t* data_end = data + send_payload_size;
             uint32_t mask_flags = 0;
             if constexpr (!is_server) {
+                // TODO: Maybe want to use a more efficient rng
                 uint32_t mask = SemiSecureRand32();
                 WSMaskBytesFast(data, send_payload_size, mask);
                 data -= 4;
@@ -634,7 +702,11 @@ namespace fws {
             io_buf.start_pos -= frame_hdr_size;
             size_t old_buf_size = io_buf.size;
             io_buf.size = frame_size;
-            ssize_t send_ret = tcp_socket_.Write(io_buf, frame_size, old_buf_size + frame_hdr_size);
+            size_t this_time_write_size = std::min(frame_size, constants::MAX_WRITABLE_SIZE_ONE_TIME);
+            ssize_t send_ret = 0;
+            if (unsent_buf_ring_.empty()) {
+                send_ret = tcp_socket_.Write(io_buf, this_time_write_size);
+            }
 //#ifdef FWS_DEV_DEBUG
 //            if FWS_UNLIKELY(is_control || size_t(send_ret) != frame_size) {
 //                fprintf(stderr, "fd %d Send frame opcode: %u, fin: %u, write ret: %zd,"
@@ -643,17 +715,35 @@ namespace fws {
 //            }
 //
 //#endif
-            if FWS_LIKELY(send_ret >= 0) {
+            bool would_block = send_ret < 0 && errno == EAGAIN;
+            if FWS_LIKELY(send_ret >= 0 || would_block) {
+                size_t sent_size = send_ret;
+                if ((send_ret >= 0 && sent_size < frame_size) || would_block) {
+                    unsent_buf_ring_.emplace_back(std::move(io_buf), frame_type);
+                    int req_write_ret = handler.OnNeedRequestWrite(*static_cast<Derived*>(this));
+                    if FWS_UNLIKELY(req_write_ret < 0) {
+                        return req_write_ret;
+                    }
+                }
+                if (send_ret == ssize_t(frame_size)) {
+                    if FWS_UNLIKELY(frame_type == WS_CLOSE_FRAME) {
+                        static_cast<Derived*>(this)->OnSentCloseFrame();
+                    }
+                }
+                return send_payload_size;
                 // TODO: Use a ring buffer of IOBuffer to buffer the unsent io_buffer
-                FWS_ASSERT_M(size_t(send_ret) == frame_size, "send size should always equal"
-                                                             "to frame size");
-                ssize_t sent_pl_size =  send_ret - frame_hdr_size;
-                io_buf.size = old_buf_size - sent_pl_size;
+//                FWS_ASSERT_M(size_t(send_ret) == frame_size, "send size should always equal"
+//                                                             "to frame size");
+
+//                ssize_t sent_pl_size =  send_ret - frame_hdr_size;
+//                io_buf.size = old_buf_size - sent_pl_size;
                 // exclude ws frame hdr size
-                return sent_pl_size;
+//                return sent_pl_size;
 //                return send_ret;
             }
             else {
+                SetErrorFormatStr("Failed to write, %s", std::strerror(errno));
+//                FWS_ASSERT(send_ret >= 0);
                 return send_ret;
             }
 
