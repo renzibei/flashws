@@ -175,8 +175,8 @@ namespace fws {
             bind_ret = bind(fd_, (sockaddr*)&bind_addr, sizeof(bind_addr));
 #endif
             if FWS_UNLIKELY(bind_ret < 0) {
-                SetErrorFormatStr("Failed to bind to %s:u, bind return %d, errno is %d",
-                                  host_addr, port, bind_ret, errno);
+                SetErrorFormatStr("Failed to bind to %s:%u, bind return %d, errno is %d, %s",
+                                  host_addr, port, bind_ret, errno, std::strerror(errno));
             }
             return bind_ret;
         }
