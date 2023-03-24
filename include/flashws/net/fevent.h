@@ -12,6 +12,7 @@
 #ifdef FWS_LINUX
 #   define FWS_EPOLL
 #   include <sys/epoll.h>
+#   include <linux/sockios.h>
 #else
 #   define FWS_POLL
 #   include <poll.h>
@@ -20,7 +21,6 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
-#include <linux/sockios.h>
 #include "flashws/utils/flat_hash_map.h"
 
 #endif
