@@ -179,15 +179,16 @@ namespace test {
 //                    }
 //                    FWS_ASSERT(io_buf_.size == MAX_DATA_LEN);
 
-                    int writable_size = ws_socket.tcp_socket().GetWritableBytes();
-                    if FWS_UNLIKELY(writable_size < 0) {
-                        printf("Failed to get writable bytes, %s\n", fws::GetErrorStrP());
-                        std::abort();
-                    }
+//                    int writable_size = ws_socket.tcp_socket().GetWritableBytes();
+//                    if FWS_UNLIKELY(writable_size < 0) {
+//                        printf("Failed to get writable bytes, %s\n", fws::GetErrorStrP());
+//                        std::abort();
+//                    }
                     size_t target_size = io_buf_.size;
                     size_t written_size = 0;
-                    if (writable_size > 0) {
-                        ssize_t write_ret = ws_socket.WriteFrame(*this, io_buf_, writable_size,
+//                    if (writable_size > 0) {
+                    {
+                        ssize_t write_ret = ws_socket.WriteFrame(*this, io_buf_,
                                                                  (fws::WSTxFrameType)con_ctx.status.opcode, true);
                         FWS_ASSERT(write_ret >= 0);
                         written_size = size_t(write_ret);

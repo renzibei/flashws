@@ -700,7 +700,7 @@ namespace fws {
             size_t frame_hdr_size = expect_ws_hdr_size;
             FWS_ASSERT(frame_size == frame_hdr_size + send_payload_size);
             io_buf.start_pos -= frame_hdr_size;
-            size_t old_buf_size = io_buf.size;
+//            size_t old_buf_size = io_buf.size;
             io_buf.size = frame_size;
             size_t this_time_write_size = std::min(frame_size, constants::MAX_WRITABLE_SIZE_ONE_TIME);
             ssize_t send_ret = 0;

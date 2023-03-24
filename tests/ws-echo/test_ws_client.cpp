@@ -213,7 +213,7 @@ namespace test {
                     bool this_client_finish_all_connection = false;
                     bool new_client_trying_connect = false;
                     if (client_msg_cnt == MSG_LIMIT_PER_CLIENT) {
-                        int old_fd = ws_socket.tcp_socket().fd();
+//                        int old_fd = ws_socket.tcp_socket().fd();
 
                         ws_socket.Close(*this, fws::WS_NORMAL_CLOSE, {});
 
@@ -291,18 +291,18 @@ namespace test {
 
                     start_write_tick = cpu_timer.Start();
                     auto &cur_sock = client_ctx->sock;
-                    int writable_size = cur_sock.tcp_socket().GetWritableBytes();
-                    if FWS_UNLIKELY(writable_size < 0) {
-                        printf("Failed to get writable bytes, %s\n", fws::GetErrorStrP());
-                        std::abort();
-                    }
+//                    int writable_size = cur_sock.tcp_socket().GetWritableBytes();
+//                    if FWS_UNLIKELY(writable_size < 0) {
+//                        printf("Failed to get writable bytes, %s\n", fws::GetErrorStrP());
+//                        std::abort();
+//                    }
 //                    writable_size = 0;
 //                    printf("writable size: %d\n", writable_size);
                     size_t target_size = temp_buf_->size;
                     size_t written_size = 0;
-                    if (writable_size > 0) {
-
-                        ssize_t write_ret = cur_sock.WriteFrame(*this, *temp_buf_, writable_size,
+//                    if (writable_size > 0) {
+                    {
+                        ssize_t write_ret = cur_sock.WriteFrame(*this, *temp_buf_,
                                                                 static_cast<fws::WSTxFrameType>(2U), true);
 //                        FWS_ASSERT(write_ret >= 0);
                         if FWS_UNLIKELY(write_ret < 0) {
@@ -408,7 +408,7 @@ namespace test {
 //            if (buf.size > 4) {
 //                memcpy(dis_buf, buf.data + buf.start_pos + buf.size - 4LL, 4);
 //            }
-            ssize_t write_ret = w_socket.WriteFrame(*this, buf, w_socket.tcp_socket().GetWritableBytes(),
+            ssize_t write_ret = w_socket.WriteFrame(*this, buf,
                                                     static_cast<fws::WSTxFrameType>(2U), true);
             if FWS_UNLIKELY(write_ret < 0) {
                 printf("Error, write return %zd, %s\n", write_ret, fws::GetErrorStrP());

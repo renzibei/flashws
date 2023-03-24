@@ -99,7 +99,7 @@ namespace fws {
             else
 #endif
             if (event.is_writable()) {
-                size_t available_size = event.send_buf_size();
+//                size_t available_size = event.send_buf_size();
                 if FWS_LIKELY(status_ == OPEN_STATUS) {
                     TrySendBufferedFrames(handler);
 //                    if FWS_UNLIKELY(need_send_control_msg_) {
@@ -134,7 +134,7 @@ namespace fws {
         // size and payload size is no less than
         // writable_size, will we make this frame the last frame of a msg.
         template<class EventHandler>
-        FWS_ALWAYS_INLINE ssize_t WriteFrame(EventHandler &handler, IOBuffer& io_buf, size_t writable_size,
+        FWS_ALWAYS_INLINE ssize_t WriteFrame(EventHandler &handler, IOBuffer& io_buf,
                                              WSTxFrameType frame_type, bool last_frame_if_possible) {
 //            if FWS_UNLIKELY(need_send_control_msg_) {
 //                ssize_t handle_control_msg_ret = HandleUnsentControlMsgOnWritable(handler, writable_size);
