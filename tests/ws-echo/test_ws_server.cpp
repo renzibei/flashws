@@ -44,7 +44,7 @@ namespace test {
         FILE* output_fp = nullptr;
 
         // New tcp connection accepted
-        int OnNewTcpConnection(fws::WSServerSocket &w_socket) {
+        int OnNewTcpConnection(fws::WSServerSocket &&w_socket) {
             int fd =  w_socket.tcp_socket().fd();
 //            printf("OnNewTcpConnection called, fd: %d\n", fd);
             auto new_buf = fws::RequestBuf(MAX_DATA_LEN + fws::constants::SUGGEST_RESERVE_WS_HDR_SIZE);
@@ -406,7 +406,7 @@ namespace test {
         fws::WsServer ws_server{no_delay, busy_poll_us};
 //        const char* const listen_addr = "10.5.96.7";
         int listen_ret = ws_server.StartListen(SERVER_IP, SERVER_PORT,
-                                               LISTEN_BACKLOG, fws::TcpSocket::REUSE_ADDR_MODE);
+                                               LISTEN_BACKLOG, fws::TCPSocket::REUSE_ADDR_MODE);
         if (listen_ret < 0) {
             printf("Failed to listen, return %d, %s\n", listen_ret,
                    std::string(fws::GetErrorStrV()).c_str());

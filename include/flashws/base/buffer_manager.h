@@ -21,7 +21,8 @@ namespace fws {
 
         FWS_ALWAYS_INLINE uint64_t DecBufRefCount(uint8_t *buf_data_ptr) {
             auto find_it = buf_cnt_map_.find(buf_data_ptr);
-            FWS_ASSERT_M(find_it->second > 0, "Call DecBufRefCount more than"
+//            FWS_ASSERT_M(find_it != buf_cnt_map_.end(), "DecBufRefCount not found");
+            FWS_ASSERT_M(find_it->second > 0, "Call DecBufRefCount more than "
                                               "AddBufRefCount");
             // TODO:now we do not erase data_ptr from hash map because we assume
             // that the freed data would be allocated again
@@ -88,7 +89,7 @@ namespace fws {
     // data is null if fail
     IOBuffer RequestBuf(size_t size) {
         void* p = MemPoolEnv::instance().allocate(size);
-//        BufferManager::instance().AddBufRefCount((uint8_t*)p);
+        // Inc ref count in the constructor
         IOBuffer ret((uint8_t*)p, 0, 0, size);
         return ret;
     }

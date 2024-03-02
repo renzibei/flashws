@@ -4,8 +4,18 @@
 
 namespace fws {
 
-    class WSServerSocket: public WSocket<WSServerSocket, true> {
+    template<typename>
+    class FLoop;
+
+    template<bool enable_tls=false>
+    class WSServerSocket: public WSocket<WSServerSocket<enable_tls>, true, enable_tls> {
     protected:
+
+        using Base = WSocket<WSServerSocket<enable_tls>, true, enable_tls>;
+        friend Base;
+        template<typename Alloc>
+        friend class FLoop;
+
         enum ServerStatus: uint8_t {
             RECVING_REQ = 0,
             SENDING_REPLY = 1,
@@ -18,114 +28,99 @@ namespace fws {
             CLOSED_STATUS = 28,           // 11100
 
         };
-        friend class WSocket<WSServerSocket, true>;
-    public:
 
-        int Init(TcpSocket &new_tcp_socket) {
-            status_ = RECVING_REQ;
-            int ret_code = this->InitBase(new_tcp_socket);
-            return ret_code;
+
+        using UnderSocket = typename Base::UnderSocket;
+        using Base::InitBase;
+
+        using Base::tx_control_frame_hdr_size;
+        using Base::Sha1SecKey;
+        using Base::Sha1AndBase64Key;
+        using Base::ToLowerCase;
+        using Base::OnRecvData;
+        using Base::TrySendBufferedFrames;
+        using Base::PrepareSendClose;
+        using Base::SendFrame;
+        using Base::InitWSPart;
+        using Base::buf_;
+        using Base::in_shutting_down_;
+    public:
+        using Base::under_socket;
+
+        WSServerSocket(): Base(), server_status_(RECVING_REQ),
+            on_new_connection_{} {}
+
+        WSServerSocket(WSServerSocket&& o) noexcept:
+            Base(std::move(o)),
+            server_status_(std::exchange(o.server_status_, RECVING_REQ)),
+            on_new_connection_(std::move(o.on_new_connection_))
+            {}
+
+        WSServerSocket& operator=(WSServerSocket&& o) noexcept {
+            std::swap(static_cast<Base&>(*this), static_cast<Base&>(o));
+            std::swap(server_status_, o.server_status_);
+            std::swap(on_new_connection_, o.on_new_connection_);
+            return *this;
+        }
+
+        WSServerSocket(const WSServerSocket& o) = delete;
+        WSServerSocket& operator=(const WSServerSocket& o) = delete;
+
+        WSServerSocket(UnderSocket&& under) noexcept:
+            Base(std::move(under)), server_status_(RECVING_REQ),
+            on_new_connection_{} {}
+
+        using WsOnNewConnectionFunc = stdext::inplace_function<int(
+                WSServerSocket& /*w_socket*/, std::string_view /*req_uri*/,
+                std::string_view /*host*/, std::string_view /*origin*/,
+                std::string_view /*sub_protocols*/,
+                std::string_view /*extensions*/,
+                std::string_view& /*resp_sub_protocol*/,
+                std::string_view& /*resp_extensions*/,
+                void* /*user_data*/)>;
+
+        int Init(const char* host_name = nullptr) {
+            int tcp_init_ret = 0;
+            if constexpr (enable_tls) {
+                tcp_init_ret = under_socket().template Init<true>(host_name);
+            }
+            else {
+                tcp_init_ret = under_socket().Init();
+            }
+
+            if FWS_UNLIKELY(tcp_init_ret < 0) {
+                SetErrorFormatStr("Failed to create tcp socket, %s", std::strerror(errno));
+                return tcp_init_ret;
+            }
+            int ret = InitWSPart();
+            return ret;
+        }
+
+        int StartListen(const char* host_ip_addr,
+                        uint16_t port, int backlog,
+                        TCPSocket::BindMode bind_mode) {
+            if FWS_UNLIKELY(under_socket().Bind(host_ip_addr, port, bind_mode) < 0) {
+                return -3;
+            }
+            if FWS_UNLIKELY(under_socket().Listen(backlog) < 0) {
+                return -4;
+            }
+            return 0;
         }
 
 
-        template<class EventHandler>
-        int Close(EventHandler &handler, WSStatusCose close_code, std::string_view reason) {
+        int Close(WSStatusCode close_code, std::string_view reason) {
             if (IsWaitForClose()) {
                 return 1;
             }
 //            FWS_ASSERT(!IsWaitForClose());
-            status_ = NOT_RECV_NOT_SENT_CLOSE;
-            int handle_ret = PrepareSendClose(handler, close_code, reason);
+            server_status_ = NOT_RECV_NOT_SENT_CLOSE;
+            int handle_ret = PrepareSendClose(close_code, reason);
             return handle_ret;
         }
 
-        template<class EventHandler>
-        int HandleFEvent(const FEvent& FWS_RESTRICT event,
-                         EventHandler& FWS_RESTRICT handler) {
-            int ret = 0;
-//            uint32_t flags = event.flags;
-            if FWS_UNLIKELY(status_ == CLOSED_STATUS) {
-                SetErrorFormatStr("WS Socket status is CLOSED");
-                return -6;
-            }
-            if FWS_UNLIKELY(event.has_error()) {
-                int error_code = event.socket_err_code();
-                SetErrorFormatStr("FEV_ERROR in event flags: %d, %s", error_code, std::strerror(error_code));
-                status_ = CLOSED_STATUS;
-                handler.OnCloseConnection(*this, fws::WS_ABNORMAL_CLOSE, GetErrorStrV());
-                ret = -1;
-            }
-            else if FWS_UNLIKELY(event.is_eof()) {
-                SetErrorFormatStr("fd %d eof, old status: %d", status_);
-                status_ = CLOSED_STATUS;
-
-                // TODO: handle close
-                handler.OnCloseConnection(*this, fws::WS_ABNORMAL_CLOSE, GetErrorStrV());
-//                Close(fws::WS_ABNORMAL_CLOSE, {});
-            }
-            else if (event.is_readable()){
-                size_t available_size = event.readable_size();
-                auto recv_buf = tcp_socket_.Read(available_size, constants::SUGGEST_RESERVE_WS_HDR_SIZE);
-                if FWS_UNLIKELY(recv_buf.data == nullptr) {
-                    if (recv_buf.size < 0) {
-                        // shouldn't be EAGAIN when readable
-                        SetErrorFormatStr("Error when reading in ws server read, ava size: %zu, %s\n",
-                                          available_size, std::strerror(errno));
-                        ret = -2;
-                    }
-                    status_ = CLOSED_STATUS;
-                    handler.OnCloseConnection(*this, fws::WS_ABNORMAL_CLOSE, GetErrorStrV());
-
-                }
-                else if FWS_LIKELY(status_ == OPEN_STATUS) {
-                    ret = OnRecvData(handler, recv_buf);
-                    if FWS_UNLIKELY(ret < 0) {
-                        Close(handler, fws::WS_ABNORMAL_CLOSE, GetStringViewSlice(GetErrorStrV(),
-                             constants::WS_MAX_CONTROL_FRAME_SIZE - tx_control_frame_hdr_size() - 2U));
-                    }
-//                    return handle_read_ret;
-                }
-                else if (status_ == RECVING_REQ){
-
-                    ret = HandleHandshakeRequest(recv_buf, handler);
-//                    return handle_request_ret;
-                }
-                else {
-                    SetErrorFormatStr("Shouldn't be in this status, status: %d\n", status_);
-                    ret = -3;
-                }
-            }
-#ifdef FWS_ENABLE_FSTACK
-            else
-#endif
-            if (event.is_writable()) {
-//                size_t available_size = event.send_buf_size();
-                if FWS_LIKELY(status_ == OPEN_STATUS) {
-                    TrySendBufferedFrames(handler);
-//                    if FWS_UNLIKELY(need_send_control_msg_) {
-//                        ssize_t handle_control_msg_ret = HandleUnsentControlMsgOnWritable(handler, available_size);
-//                        if FWS_UNLIKELY(handle_control_msg_ret < 0) {
-//                            return handle_control_msg_ret;
-//                        }
-//                        available_size -= handle_control_msg_ret;
-//                    }
-                    ret = 0;
-//                    available_size = std::min(available_size, constants::MAX_WRITABLE_SIZE_ONE_TIME);
-//                    ret = handler.OnWritable(*this, available_size);
-//                    return write_ret;
-                }
-                else {
-                    SetErrorFormatStr("Shouldn't be in this status\n");
-                    ret = -4;
-                }
-            }
-            // If we finish the close handshake
-            if FWS_UNLIKELY(status_ == CLOSED_STATUS) {
-                int fd = tcp_socket_.fd();
-                tcp_socket_.Close();
-                ret = handler.OnCleanSocket(fd);
-            }
-            return ret;
+        void SetOnNewConnection(WsOnNewConnectionFunc on_new_connection) {
+            on_new_connection_ = std::move(on_new_connection);
         }
 
         // User can use fws::GetTxWSFrameHdrSize to calculate the size of frame
@@ -133,8 +128,7 @@ namespace fws {
         // the size of control frame into account. Only when the sum of hdr
         // size and payload size is no less than
         // writable_size, will we make this frame the last frame of a msg.
-        template<class EventHandler>
-        FWS_ALWAYS_INLINE ssize_t WriteFrame(EventHandler &handler, IOBuffer& io_buf,
+        FWS_ALWAYS_INLINE ssize_t WriteFrame(IOBuffer&& io_buf,
                                              WSTxFrameType frame_type, bool last_frame_if_possible) {
 //            if FWS_UNLIKELY(need_send_control_msg_) {
 //                ssize_t handle_control_msg_ret = HandleUnsentControlMsgOnWritable(handler, writable_size);
@@ -143,66 +137,141 @@ namespace fws {
 //                }
 //                writable_size -= handle_control_msg_ret;
 //            }
-            return SendFrame(handler, io_buf, frame_type, last_frame_if_possible);
+            return SendFrame(std::move(io_buf), frame_type, last_frame_if_possible);
         }
 
-    protected:
-        ServerStatus status_;
-//        IOBuffer req_buf_;
 
-//        friend class WSocket<WSServerSocket>;
+
+    protected:
+        ServerStatus server_status_;
+
+        WsOnNewConnectionFunc on_new_connection_;
 
         constexpr bool IsServer() {
             return true;
+        }
+
+        void CleanDataDerived() {
+            std::destroy_at(&on_new_connection_);
+        }
+
+        int InitWSPartImp() {
+            server_status_ = RECVING_REQ;
+            int ret_code = InitBase();
+            SetOnNewConnection([](WSServerSocket& /*w_socket*/, std::string_view /*req_uri*/,
+                                  std::string_view /*host*/, std::string_view /*origin*/,
+                                  std::string_view /*sub_protocols*/,
+                                  std::string_view /*ws_extensions*/,
+                                  std::string_view& /*resp_sub_protocol*/,
+                                  std::string_view& /*resp_extensions*/,
+                                  void* /*user_data*/) {return 0;});
+            return ret_code;
+        }
+
+        void InitUnderOnReadImp() {
+            Base::under_socket().SetOnReadable([](UnderSocket& under_s, IOBuffer& recv_buf, void* /*user_data*/) {
+
+                int ret = 0;
+                auto &sock = static_cast<WSServerSocket&>(under_s);
+                if FWS_LIKELY(sock.server_status_ == OPEN_STATUS) {
+                    ret = sock.OnRecvData(recv_buf);
+                    if FWS_UNLIKELY(ret < 0) {
+                        sock.Close(fws::WS_ABNORMAL_CLOSE, GetStringViewSlice(GetErrorStrV(),
+                              constants::WS_MAX_CONTROL_FRAME_SIZE - tx_control_frame_hdr_size() - 2U));
+                    }
+                }
+                else if (sock.server_status_ == RECVING_REQ){
+
+                    ret = sock.HandleHandshakeRequest(recv_buf);
+//                    return handle_request_ret;
+                }
+                else {
+                    SetErrorFormatStr("Shouldn't be in this status, status: %d\n", sock.server_status_);
+                    ret = -3;
+                }
+                if (ret < 0 || (sock.server_status_ == CLOSED_STATUS && !sock.in_shutting_down_)) {
+                    sock.under_socket().Close();
+                }
+
+            });
+        }
+
+        WsOnNewConnectionFunc& on_new_connection() {
+            return on_new_connection_;
+        }
+
+        void InitUnderOnWriteImp() {
+            Base::under_socket().SetOnWritable([](UnderSocket& under_s, size_t /*writable_size*/, void* user_data) {
+                int ret = 0;
+                auto &sock = static_cast<WSServerSocket&>(under_s);
+//                size_t available_size = event.send_buf_size();
+//                size_t available_size = event.send_buf_size();
+                if FWS_LIKELY(sock.server_status_ == OPEN_STATUS || sock.server_status_ == NOT_RECV_NOT_SENT_CLOSE || sock.server_status_ == HAS_RECV_NOT_SENT_CLOSE) {
+                    ret = sock.TrySendBufferedFrames();
+                    if (ret == 0 && sock.unsent_buf_ring_.empty() && sock.server_status_ == OPEN_STATUS) {
+                        sock.on_write()(sock, user_data);
+                    }
+                }
+                else {
+                    SetErrorFormatStr("Shouldn't be in this status\n");
+                    ret = -4;
+                }
+
+                if FWS_UNLIKELY(ret < 0 || (sock.server_status_ == CLOSED_STATUS && !sock.in_shutting_down_)) {
+                    // TODO: Currently, we try to call on_close() when the server_status_
+                    // switches to CLOSED_STATUS, but we should also Close the underlying
+                    // socket when we set the close status. What's more, not all the failing
+                    // case do we set server_status_ to CLOSED_STATUS
+                    sock.under_socket().Close();
+                }
+            });
         }
 
         static std::string_view GetStringViewSlice(std::string_view s, size_t max_len) {
             return {s.data(), std::min(s.size(), max_len)};
         }
 
-//        int CloseClean() {
-//            status_ = CLOSED_STATUS;
-//            return 0;
-//        }
 
         bool IsWaitForClose() const {
-            return status_ & 4U;
+            return server_status_ & 4U;
         }
 
         bool HasRecvClose() const {
-            return status_ & 16U;
+            return server_status_ & 16U;
         }
 
         bool HasSentClose() const {
-            return status_ & 8U;
+            return server_status_ & 8U;
         }
 
         int OnRecvCloseFrame() {
             // TODO: finish
+            in_shutting_down_ = true;
             if (!IsWaitForClose()) {
-                status_ = HAS_RECV_NOT_SENT_CLOSE;
+                server_status_ = HAS_RECV_NOT_SENT_CLOSE;
             }
             else {
-                if (status_ == NOT_RECV_NOT_SENT_CLOSE) {
-                    status_ = HAS_RECV_NOT_SENT_CLOSE;
+                if (server_status_ == NOT_RECV_NOT_SENT_CLOSE) {
+                    server_status_ = HAS_RECV_NOT_SENT_CLOSE;
                 }
-                else if (status_ == NOT_RECV_HAS_SENT_CLOSE) {
-                    status_ = CLOSED_STATUS;
+                else if (server_status_ == NOT_RECV_HAS_SENT_CLOSE) {
+                    server_status_ = CLOSED_STATUS;
                 }
                 else {
                     FWS_ASSERT_M(false, "Shouldn't in this status when recv close!");
                 }
+
             }
             return 0;
         }
 
         int OnSentCloseFrame() {
             FWS_ASSERT(IsWaitForClose());
-            if (status_ == NOT_RECV_NOT_SENT_CLOSE) {
-                status_ = NOT_RECV_HAS_SENT_CLOSE;
+            if (server_status_ == NOT_RECV_NOT_SENT_CLOSE) {
+                server_status_ = NOT_RECV_HAS_SENT_CLOSE;
             }
-            else if (status_ == HAS_RECV_NOT_SENT_CLOSE) {
-                status_ = CLOSED_STATUS;
+            else if (server_status_ == HAS_RECV_NOT_SENT_CLOSE) {
+                server_status_ = CLOSED_STATUS;
             }
             else {
                 FWS_ASSERT_M(false, "Shouldn't in this status when send close!");
@@ -220,12 +289,10 @@ namespace fws {
             return false;
         }
 
-        template<class EventHandler>
-        int HandleHandshakeRequest(IOBuffer& FWS_RESTRICT io_buf,
-                                     EventHandler& FWS_RESTRICT handler) {
+        int HandleHandshakeRequest(IOBuffer& FWS_RESTRICT io_buf) {
             if FWS_LIKELY(buf_.data == 0) {
                 if FWS_LIKELY(HasRecvWholeHttpRequest(io_buf.data + io_buf.start_pos, io_buf.size)) {
-                    return ParseRequest(io_buf, handler);
+                    return ParseRequest(io_buf);
                 }
                 else {
                     buf_ = RequestBuf(constants::MAX_HANDSHAKE_REQUEST_LENGTH);
@@ -243,16 +310,14 @@ namespace fws {
             buf_.size += io_buf.size;
 //            ReclaimBuf(io_buf);
             if (HasRecvWholeHttpRequest(buf_.data + buf_.start_pos, buf_.size)) {
-                int parse_ret = ParseRequest(buf_, handler);
+                int parse_ret = ParseRequest(buf_);
                 buf_.size = 0U;
                 return parse_ret;
             }
             return 0;
         }
 
-        template<class EventHandler>
-        int ParseRequest(IOBuffer &buf,
-                         EventHandler& handler) {
+        int ParseRequest(IOBuffer &buf) {
             char* FWS_RESTRICT data = (char* FWS_RESTRICT)buf.data + buf.start_pos;
             char* const FWS_RESTRICT data_end = (char* const)(buf.data + buf.start_pos + buf.size);
 //            char req_uri[constants::MAX_REQ_URI_LENGTH] = {0};
@@ -299,13 +364,13 @@ namespace fws {
                         auto resp_buf = RequestBuf(constants::MAX_HANDSHAKE_RESP_LENGTH);
                         size_t resp_buf_len = 0;
                         std::string_view resp_sub_protocol{}, resp_extensions{};
-                        int acc_code = handler.OnNewWsConnection(*this,
-                                                                 req_uri, host, origin, sub_protocols,
-                                                                 ws_extensions, resp_sub_protocol,
-                                                                 resp_extensions);
+                        int acc_code = on_new_connection()(*this,
+                                             req_uri, host, origin, sub_protocols,
+                                             ws_extensions, resp_sub_protocol,
+                                             resp_extensions, this + 1);
 //                        ReclaimBuf(buf);
                         if (acc_code == 0) {
-                            status_ = SENDING_REPLY;
+                            server_status_ = SENDING_REPLY;
 //                            char src_key_buf[24 + 36];
 //                            memcpy(src_key_buf, sec_key.data(), 24);
 //                            memcpy(src_key_buf + 24, constants::GLOBAL_WS_UUID, 36);
@@ -355,7 +420,7 @@ namespace fws {
 
                         }
                         else {
-                            status_ = SENDING_ERROR;
+                            server_status_ = SENDING_ERROR;
                             int printf_len = snprintf((char*)resp_buf.data, resp_buf.capacity,
                                                       "HTTP/1.1 403 Forbidden\r\n"
                                                       "Sec-WebSocket-Version: %s\r\n",
@@ -369,19 +434,19 @@ namespace fws {
                         resp_buf.size = resp_buf_len;
                         // TODO: need underlying tcp socket support small write even
                         // in nonblocking mode
-                        ssize_t send_ret = tcp_socket_.Write(resp_buf, resp_buf_len);
+                        ssize_t send_ret = under_socket().Write(resp_buf, resp_buf_len);
                         if FWS_UNLIKELY(size_t(send_ret) != resp_buf_len) {
                             SetErrorFormatStr("tcp socket write return %zd,"
                                               "target resp length: %zu\n",
                                               send_ret, resp_buf_len);
-                            status_ = CLOSED_STATUS;
+                            server_status_ = CLOSED_STATUS;
                             return -1;
                         }
-                        if (status_ == SENDING_REPLY) {
-                            status_ = OPEN_STATUS;
+                        if (server_status_ == SENDING_REPLY) {
+                            server_status_ = OPEN_STATUS;
                         }
                         else /* status == SENDING_ERROR */{
-                            status_ = CLOSED_STATUS;
+                            server_status_ = CLOSED_STATUS;
                         }
 
                         return 0;
@@ -451,15 +516,15 @@ namespace fws {
                 // TODO: Currently we ignore other optional fields
             }
 //            ReclaimBuf(buf);
-            status_ = SENDING_ERROR;
+            server_status_ = SENDING_ERROR;
             static constexpr char HTTP_400_RESP[] = "HTTP/1.1 400 Bad Request\r\n"
                                                     "Sec-WebSocket-Version: 13\r\n\r\n";
             constexpr size_t RESP_400_LEN = sizeof(HTTP_400_RESP) - 1U;
             IOBuffer temp_buf = RequestBuf(RESP_400_LEN);
             memcpy(temp_buf.data, HTTP_400_RESP, RESP_400_LEN);
             temp_buf.size = RESP_400_LEN;
-            ssize_t write_ret = tcp_socket_.Write(temp_buf, RESP_400_LEN);
-            status_ = CLOSED_STATUS;
+            ssize_t write_ret = under_socket().Write(temp_buf, RESP_400_LEN);
+            server_status_ = CLOSED_STATUS;
             if FWS_UNLIKELY(write_ret != RESP_400_LEN) {
                 SetErrorFormatStr("tcp socket write return %zd,"
                                   "target resp length: %zu\n",

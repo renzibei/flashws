@@ -8,12 +8,15 @@
 #include "flashws/base/constexpr_math.h"
 #include "flashws/utils/block_queue.h"
 #include "flashws/utils/flat_hash_map.h"
-//#include "flashws/utils/dynamic_fph_map.h"
 #include "flashws/utils/singleton.h"
 #include <cinttypes>
 #include <cstdint>
 #include <cstring>
 #include <cassert>
+//#include <execinfo.h>
+//#include <unistd.h>
+//#include <dlfcn.h>
+//#include <cxxabi.h>
 
 #ifdef __linux__
 #   define FWS_ENABLE_HUGE_PAGE_ALLOC 1
@@ -121,6 +124,7 @@ namespace fws {
     protected:
         constexpr static uint64_t MAX_TYPE_SIZE_LOG2 = 42; // 4T
         constexpr static size_t TYPE_SIZE_NUM = MAX_TYPE_SIZE_LOG2 + 1;
+        constexpr static size_t META_DATA_HEAD_SIZE = 16;
     public:
 
         MemPool() {
@@ -139,8 +143,11 @@ namespace fws {
             bool save_meta_ahead_flag = false;
             if (demand_bytes < SMALL_MEM_ENTRY_THRES) {
                 save_meta_ahead_flag = true;
-                head_bytes = 8;
-                demand_bytes = 8 + n;
+                head_bytes = META_DATA_HEAD_SIZE;
+                demand_bytes = META_DATA_HEAD_SIZE + n;
+                static_assert(alignof(std::max_align_t) <= META_DATA_HEAD_SIZE);
+//                head_bytes = 8;
+//                demand_bytes = 8 + n;
             }
 
 #else
@@ -174,6 +181,10 @@ namespace fws {
                 size_t previousPoolStackSize = pool_index_stack_[log2].size();
                 pool_index_stack_[log2].resize(pool_index_stack_[log2].size() + capDiff);
                 for (size_t i = 0; i < capDiff; ++i) {
+//                    if (i + 1 > nowCap) {
+//                        throw std::runtime_error("i + 1>= nowCap, i: " + std::to_string(i) + ", nowCap: " + std::to_string(nowCap)
+//                                                 + ", capDiff: " + std::to_string(capDiff) + ", previousCap: " + std::to_string(previousCap)) ;
+//                    }
                     pool_index_stack_[log2][previousPoolStackSize + i] = (nowCap - i) - 1;
                 }
 #endif
@@ -182,6 +193,10 @@ namespace fws {
 #ifdef FWS_POOL_RECLAIM_MEMORY
             size_t newPoolIndex = pool_index_stack_[log2].back();
             pool_index_stack_[log2].pop_back();
+            if FWS_UNLIKELY(newPoolIndex > reserve_cap_[log2]) {
+                throw std::runtime_error("newPoolIndex > reserve_cap_[log2], newPoolIndex: " + std::to_string(newPoolIndex) +
+                                        ", reserve_cap_[log2]: " + std::to_string(reserve_cap_[log2]) + ", log2: " + std::to_string(log2));
+            }
             uint8_t *memPtr = &(memory_buffers_[log2][power2 * newPoolIndex]);
             if (save_meta_ahead_flag) {
                 uint8_t *userDataPtr = memPtr + head_bytes;
@@ -241,6 +256,32 @@ namespace fws {
             return allocate(num * size);
         }
 
+//        static void printStackTrace() {
+//            void* array[30];
+//            char** strings;
+//            int size, i;
+//
+//            size = backtrace(array, 30);
+//            strings = backtrace_symbols(array, size);
+//
+//            for (i = 0; i < size; i++) {
+//                Dl_info info;
+//                if (dladdr(array[i], &info) && info.dli_sname) {
+//                    char* demangled = NULL;
+//                    int status = -1;
+//                    if (info.dli_sname[0] == '_')
+//                        demangled = abi::__cxa_demangle(info.dli_sname, NULL, 0, &status);
+//                    printf("%s - %s: %s\n",
+//                           strings[i], info.dli_sname,
+//                           status == 0 ? demangled : info.dli_sname);
+//                    free(demangled);
+//                } else {
+//                    printf("%s\n", strings[i]);
+//                }
+//            }
+//            free(strings);
+//        }
+
         void deallocate(void *ptr) {
             if (ptr == nullptr) {
                 return;
@@ -265,7 +306,11 @@ namespace fws {
 
 
 #endif
-
+            if FWS_UNLIKELY(has_alloc_num_[log2Size] == 0) {
+//                printStackTrace();
+                throw std::runtime_error("has_alloc_num_[log2Size] == 0, log2Size: " + std::to_string(log2Size)
+                + ", dealloc_cnt_[log2Size]: " + std::to_string(dealloc_cnt_[log2Size]));
+            }
             dealloc_cnt_[log2Size]++;
             has_alloc_num_[log2Size]--;
 
@@ -320,7 +365,7 @@ namespace fws {
         };
 
 #ifdef FWS_POOL_RECLAIM_MEMORY
-        using PoolIndexStack = BlockQueue<uint32_t, internal::InternalAllocator<uint32_t>, internal::InternalAllocator<uint32_t*>>;
+        using PoolIndexStack = BlockQueue<uint32_t, false, internal::InternalAllocator<uint32_t>>;
         PoolIndexStack pool_index_stack_[TYPE_SIZE_NUM];
 
         // If there are many large chunk allocs, set larger SMALL_MEM_ENTRY_THRES
@@ -342,8 +387,9 @@ namespace fws {
         MemMetaMap mem_meta_map_;
 
         using Uint8Allocator = internal::InternalAllocator<uint8_t>;
-        using Uint8PtrAllocator = internal::InternalAllocator<uint8_t*>;
-        using MemBuffer = BlockQueue<uint8_t, Uint8Allocator, Uint8PtrAllocator>;
+        static constexpr bool NEED_ZERO_INIT_FOR_MEM = false;
+//        using Uint8PtrAllocator = internal::InternalAllocator<uint8_t*>;
+        using MemBuffer = BlockQueue<uint8_t, NEED_ZERO_INIT_FOR_MEM, Uint8Allocator>;
         MemBuffer memory_buffers_[TYPE_SIZE_NUM];
 #endif
 

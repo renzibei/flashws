@@ -132,8 +132,12 @@ namespace fws {
             return data;
         }
 
-        [[nodiscard]] int fd() const {
-            return static_cast<int>(ident);
+//        [[nodiscard]] int fd() const {
+//            return static_cast<int>(ident);
+//        }
+
+        [[nodiscard]] void* sock_ptr() const {
+            return udata;
         }
 
     };
@@ -149,31 +153,31 @@ namespace fws {
         return static_cast<FEventAction>(static_cast<int>(a) | static_cast<int>(b));
     }
 
-    int AddFEvent(FQueue &fq, int fd, FEventAction action) {
+    int AddFEvent(FQueue &fq, int fd, FEventAction action, void *sock_ptr) {
         FEvent change_evs[2];
         int change_idx = 0;
         if (action & FEVAC_READ) {
             change_evs[change_idx++] = FEvent(fd, FEVFILT_READ, FEV_ADD,
-                                              FEFFLAG_NONE, 0, nullptr);
+                                              FEFFLAG_NONE, 0, sock_ptr);
         }
         if (action & FEVAC_WRITE) {
             change_evs[change_idx++] = FEvent(fd, FEVFILT_WRITE, FEV_ADD,
-                                              FEFFLAG_NONE, 0, nullptr);
+                                              FEFFLAG_NONE, 0, sock_ptr);
         }
         int ret = ff_kevent(fq.fd, (kevent*)change_evs, change_idx, nullptr, 0, nullptr);
         return ret;
     }
 
-    int DeleteFEvent(FQueue &fq, int fd, FEventAction action) {
+    int DeleteFEvent(FQueue &fq, int fd, FEventAction action, void *sock_ptr) {
         FEvent change_evs[2];
         int change_idx = 0;
         if (action & FEVAC_READ) {
             change_evs[change_idx++] = FEvent(fd, FEVFILT_READ, FEV_DELETE,
-                                              FEFFLAG_NONE, 0, nullptr);
+                                              FEFFLAG_NONE, 0, sock_ptr);
         }
         if (action & FEVAC_WRITE) {
             change_evs[change_idx++] = FEvent(fd, FEVFILT_WRITE, FEV_DELETE,
-                                              FEFFLAG_NONE, 0, nullptr);
+                                              FEFFLAG_NONE, 0, sock_ptr);
         }
         int ret = ff_kevent(fq.fd, (kevent*)change_evs, change_idx, nullptr, 0, nullptr);
         return ret;
@@ -244,9 +248,9 @@ namespace fws {
     public:
         FEvent() = default;
 
-        FEvent(uint32_t events, int fd) {
+        FEvent(uint32_t events, void *sock_ptr) {
             this->events = events;
-            this->data.fd = fd;
+            this->data.ptr = sock_ptr;
         }
 
         [[nodiscard]] bool is_eof() const {
@@ -256,7 +260,10 @@ namespace fws {
         [[nodiscard]] int socket_err_code() const {
             int       error = 0;
             socklen_t errlen = sizeof(error);
-            if (getsockopt(fd(), SOL_SOCKET, SO_ERROR, (void *)&error, &errlen) == 0) {
+            void *sock_ptr = data.ptr;
+            // fd is the first member variable of socket
+            int fd = *(int*)sock_ptr;
+            if (getsockopt(fd, SOL_SOCKET, SO_ERROR, (void *)&error, &errlen) == 0) {
                 return error;
             }
             return errno;
@@ -301,7 +308,7 @@ namespace fws {
         }
 
         [[nodiscard]] int64_t readable_size() const {
-            return 1LL << 21;
+            return constants::MAX_READABLE_SIZE_ONE_TIME;
 //            int fd = this->fd();
 //            int is_listen = 0;
 //            socklen_t s_len = sizeof(is_listen);
@@ -329,9 +336,13 @@ namespace fws {
             return 1;
         }
 
-        [[nodiscard]] int fd() const {
-            return data.fd;
+        [[nodiscard]] void* sock_ptr() const {
+            return data.ptr;
         }
+
+//        [[nodiscard]] int fd() const {
+//            return data.fd;
+//        }
 
     protected:
     };
@@ -420,7 +431,7 @@ namespace fws {
         return static_cast<FEventAction>(static_cast<int>(a) | static_cast<int>(b));
     }
 
-    int AddFEvent(FQueue &fq, int fd, FEventAction action) {
+    int AddFEvent(FQueue &fq, int fd, FEventAction action, void *sock_ptr) {
         auto &fd_info_map = detail::queue_to_fd_info_map[fq.fd];
 
         auto find_it = fd_info_map.find(fd);
@@ -443,11 +454,11 @@ namespace fws {
         }
         // If need to modify events
         if FWS_LIKELY(op != 0) {
-            FEvent change_ev(target_events, fd);
+            FEvent change_ev(target_events, sock_ptr);
             int epoll_ctl_ret = epoll_ctl(fq.fd, op, fd, (epoll_event*)&change_ev);
             if FWS_UNLIKELY(epoll_ctl_ret < 0) {
-                SetErrorFormatStr("epoll return %d, %s",
-                                  epoll_ctl_ret, std::strerror(errno));
+                SetErrorFormatStr("epoll return %d, fq.fd: %d, fd: %d, %s",
+                                  epoll_ctl_ret, fq.fd, fd, std::strerror(errno));
                 return epoll_ctl_ret;
             }
             find_it->second.cur_evs = target_events;
@@ -457,7 +468,7 @@ namespace fws {
 
     }
 
-    int DeleteFEvent(FQueue &fq, int fd, FEventAction action) {
+    int DeleteFEvent(FQueue &fq, int fd, FEventAction action, void* sock_ptr) {
         auto &fd_info_map = detail::queue_to_fd_info_map[fq.fd];
 
         auto find_it = fd_info_map.find(fd);
@@ -479,7 +490,7 @@ namespace fws {
             op = EPOLL_CTL_MOD;
         }
 
-        FEvent change_ev(target_events, fd);
+        FEvent change_ev(target_events, sock_ptr);
         int epoll_ctl_ret = epoll_ctl(fq.fd, op, fd, (epoll_event*)&change_ev);
         if FWS_UNLIKELY(epoll_ctl_ret < 0) {
             SetErrorFormatStr("epoll return %d, %s",
