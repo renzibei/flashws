@@ -1,6 +1,8 @@
 #pragma once
 
 #include "flashws/base/base_include.h"
+#include "flashws/utils/inplace_function.h"
+#include "flashws/utils/flash_alloc.h"
 #include "flashws/net/fevent.h"
 #include <sys/ioctl.h> // FIONBIO
 #include <arpa/inet.h>
@@ -13,22 +15,70 @@
 #endif
 
 namespace fws {
+    template<typename>
+    class FLoop;
 
 
+    enum SocketStatus: int8_t {
+        INIT_SOCKET_STATUS = 0,
+        SEMI_SOCKET_STATUS = 1,
+        NORMAL_SOCKET_STATUS = 2,
+        SHUTDOWN_SOCKET_STATUS = 4,
+        CLOSED_SOCKET_STATUS = 8,
 
-    class TcpSocket {
+    };
+
+//    inline int operator&(SocketStatus a, SocketStatus b) {
+//        return static_cast<int>(a) & static_cast<int>(b);
+//    }
+//
+//    inline int operator|(SocketStatus a, SocketStatus b) {
+//        return static_cast<int>(a) | static_cast<int>(b);
+//    }
+
+    class alignas(std::max_align_t) TCPSocket {
+    protected:
+        template<typename Alloc>
+        friend class FLoop;
+        friend class TLSSocket;
+//        template<typename, bool, bool>
+//        friend class WSocket;
+
     public:
 
         inline static constexpr int INVALID_FD = -1;
 
-        TcpSocket(): fd_(INVALID_FD) {}
+        TCPSocket(): fd_(INVALID_FD) {}
 
-        TcpSocket(const TcpSocket&) = delete;
-        TcpSocket& operator=(const TcpSocket&) = delete;
-        TcpSocket(TcpSocket&& o) noexcept: fd_(std::exchange(o.fd_, INVALID_FD)) {}
+        TCPSocket(const TCPSocket&) = delete;
+        TCPSocket& operator=(const TCPSocket&) = delete;
+        TCPSocket(TCPSocket&& o) noexcept: fd_(std::exchange(o.fd_, INVALID_FD)),
+            is_opened_(std::exchange(o.is_opened_, false)),
+            status_(std::exchange(o.status_, INIT_SOCKET_STATUS)),
+            last_write_failed_(std::exchange(o.last_write_failed_, false)),
+            fq_ptr_(std::exchange(o.fq_ptr_, nullptr)),
+            data_ptr_(std::exchange(o.data_ptr_, nullptr)),
+            on_readable_(std::exchange(o.on_readable_, [](TCPSocket&, IOBuffer&, void*){})),
+            on_writable_(std::exchange(o.on_writable_, [](TCPSocket&, size_t, void*){})),
+            on_open_(std::exchange(o.on_open_, [](TCPSocket&, void*){})),
+            on_close_(std::exchange(o.on_close_, [](TCPSocket&, void*){})),
+            on_eof_(std::exchange(o.on_eof_, [](TCPSocket &s, void*){s.Shutdown(SHUT_WR_MODE);s.Close();})),
+            on_error_(std::exchange(o.on_error_, [](TCPSocket&, int, std::string_view, void*){}))
+            {}
 
-        TcpSocket& operator=(TcpSocket&& o) noexcept {
+        TCPSocket& operator=(TCPSocket&& o) noexcept {
             std::swap(fd_, o.fd_);
+            std::swap(is_opened_, o.is_opened_);
+            std::swap(status_, o.status_);
+            std::swap(last_write_failed_, o.last_write_failed_);
+            std::swap(fq_ptr_, o.fq_ptr_);
+            std::swap(data_ptr_, o.data_ptr_);
+            std::swap(on_readable_, o.on_readable_);
+            std::swap(on_writable_, o.on_writable_);
+            std::swap(on_open_, o.on_open_);
+            std::swap(on_close_, o.on_close_);
+            std::swap(on_eof_, o.on_eof_);
+            std::swap(on_error_, o.on_error_);
             return *this;
         }
 
@@ -38,7 +88,7 @@ namespace fws {
             SHUT_RDWR_MODE = SHUT_RDWR,
         };
 
-        ~TcpSocket() {
+        ~TCPSocket() {
             if (fd_ != INVALID_FD) {
                 // TODO: test whether Close send FIN flag
 //                Shutdown(SHUT_RDWR_MODE);
@@ -47,19 +97,63 @@ namespace fws {
             }
         }
 
-        int Init() {
+
+
+        int Init(int fd, bool is_opened, SocketStatus status, FQueue *fq_ptr,
+                 bool nonblock = constants::ENABLE_NON_BLOCK_BY_DEFAULT,
+                 bool no_delay = constants::ENABLE_NO_DELAY_BY_DEFAULT,
+                 bool busy_poll= constants::ENABLE_NO_DELAY_BY_DEFAULT,
+                 int poll_us = constants::BUSY_POLL_US_IF_ENABLED) {
+            fd_ = fd;
+            is_opened_ = is_opened;
+            status_ = status;
+            last_write_failed_ = false;
+            fq_ptr_ = fq_ptr;
+            data_ptr_ = nullptr;
+            on_readable_ = [](TCPSocket&, IOBuffer&, void*){};
+            on_writable_ = [](TCPSocket&, size_t, void*){};
+            on_open_ = [](TCPSocket&, void*){};
+            on_close_ = [](TCPSocket&, void*){};
+            on_eof_ = [](TCPSocket &s, void*){s.Shutdown(SHUT_WR_MODE);s.Close();};
+            on_error_ = [](TCPSocket&, int, std::string_view, void*){};
+            if FWS_LIKELY(fd_ != INVALID_FD) {
+                if (nonblock) {
+                    if FWS_UNLIKELY(SetNonBlock() < 0) {
+                        return -1;
+                    }
+                }
+                if (no_delay) {
+                    if FWS_UNLIKELY(SetNoDelay() < 0) {
+                        return -2;
+                    }
+                }
+                if (busy_poll) {
+                    if FWS_UNLIKELY(SetBusyPoll(poll_us) < 0) {
+                        return -3;
+                    }
+                }
+            }
+            return fd;
+        }
+
+        int Init(bool nonblock = constants::ENABLE_NON_BLOCK_BY_DEFAULT,
+                 bool no_delay = constants::ENABLE_NO_DELAY_BY_DEFAULT,
+                 bool busy_poll= constants::ENABLE_NO_DELAY_BY_DEFAULT,
+                 int poll_us = constants::BUSY_POLL_US_IF_ENABLED) {
 #ifdef FWS_ENABLE_FSTACK
             int fd = ff_socket(AF_INET, SOCK_STREAM, 0);
 #else
             int fd = socket(AF_INET, SOCK_STREAM, 0);
 #endif
-            fd_ = fd;
-            return fd;
+            return this->Init(fd, false, INIT_SOCKET_STATUS, nullptr, nonblock, no_delay, busy_poll, poll_us);
         }
 
-        int Init(int fd) {
-            fd_ = fd;
-            return fd;
+        bool is_open() const {
+            return is_opened_;
+        }
+
+        int status() const {
+            return status_;
         }
 
 
@@ -195,19 +289,30 @@ namespace fws {
             if FWS_UNLIKELY(ret < 0 && errno != EINPROGRESS) {
                 SetErrorFormatStr("Failed to connect, %s",
                                   std::strerror(errno));
+                return ret;
             }
+//            if (fq_ptr_ != nullptr) {
+//                AddFEvent(*fq_ptr_, fd_, FEventAction::FEVAC_WRITE);
+//            }
+            status_ = SEMI_SOCKET_STATUS;
             return ret;
         }
 
         int Listen(int queue_limit) {
+            int ret = 0;
 #ifdef FWS_ENABLE_FSTACK
-            return ff_listen(fd_, queue_limit);
+            ret = ff_listen(fd_, queue_limit);
 #else
-            return listen(fd_, queue_limit);
+            ret = listen(fd_, queue_limit);
 #endif
+            if FWS_UNLIKELY(ret < 0) {
+                SetErrorFormatStr("Listen failed, %s", std::strerror(errno));
+            }
+            status_ = SEMI_SOCKET_STATUS;
+            return ret;
         }
 
-        std::optional<TcpSocket> Accept(sockaddr* addr, socklen_t *addr_len)
+        std::optional<TCPSocket> Accept(sockaddr* addr, socklen_t *addr_len)
                 FWS_RESTRICT {
 #ifdef FWS_ENABLE_FSTACK
             int new_fd = ff_accept(fd_, (linux_sockaddr*)addr, addr_len);
@@ -218,8 +323,8 @@ namespace fws {
                 SetErrorFormatStr("Accept failed, %s", std::strerror(errno));
                 return std::nullopt;
             }
-            TcpSocket ret_sock{};
-            if FWS_UNLIKELY(ret_sock.Init(new_fd) < 0) {
+            TCPSocket ret_sock{};
+            if FWS_UNLIKELY(ret_sock.Init(new_fd, true, NORMAL_SOCKET_STATUS, fq_ptr_) < 0) {
                 return std::nullopt;
             }
             return ret_sock;
@@ -232,6 +337,10 @@ namespace fws {
         int Close() FWS_FUNC_RESTRICT {
             if (fd_ == INVALID_FD) {
                 return 0;
+            }
+            on_close_(*this, data_ptr_);
+            if (fq_ptr_ != nullptr) {
+                DeleteFEvent(*fq_ptr_, fd_, FEVAC_READ | FEVAC_WRITE, (void*)this);
             }
 #ifdef FWS_POLL
             for (auto& [fq_fd, fd_info_map]: detail::queue_to_fd_info_map) {
@@ -248,6 +357,7 @@ namespace fws {
                 }
             }
 #endif
+
             int ret = 0;
 #ifdef FWS_ENABLE_FSTACK
             ret = ff_close(fd_);
@@ -255,7 +365,8 @@ namespace fws {
             ret = close(fd_);
 #endif
 
-
+            is_opened_ = false;
+            status_ =  status_ | CLOSED_SOCKET_STATUS;
             fd_ = INVALID_FD;
             return ret;
         }
@@ -309,6 +420,12 @@ namespace fws {
              ssize_t write_len = write(fd_, io_buf.data + io_buf.start_pos,
                                           std::min(max_write_size, (size_t)io_buf.size));
 #endif
+            if (write_len != io_buf.size) {
+                last_write_failed_ = true;
+                if (fq_ptr_ != nullptr) {
+                    AddFEvent(*fq_ptr_, fd_, FEventAction::FEVAC_WRITE, (void*)this);
+                }
+            }
             bool actual_release_size_set = actual_release_size != 0;
             if ((io_buf.size > 0) & ((!actual_release_size_set & (write_len == io_buf.size))
             || (actual_release_size_set & (actual_release_size == (size_t)io_buf.size)))) {
@@ -319,33 +436,146 @@ namespace fws {
                 io_buf.size -= write_len;
             }
 
+
             return write_len;
         }
 
         ssize_t Write(const void* FWS_RESTRICT buf, size_t size) {
+
 #ifdef FWS_ENABLE_FSTACK
-            return ff_write(fd_, buf, size);
+            ssize_t write_len = ff_write(fd_, buf, size);
 #else
-            return write(fd_, buf, size);
+            ssize_t write_len = write(fd_, buf, size);
 #endif
+            if (write_len != ssize_t(size)) {
+                last_write_failed_ = true;
+                if (fq_ptr_ != nullptr) {
+                    AddFEvent(*fq_ptr_, fd_, FEventAction::FEVAC_WRITE, (void*)this);
+                }
+            }
+            return write_len;
         }
 
-        int Shutdown(ShutDownMode how) FWS_FUNC_RESTRICT {
+        int Shutdown(ShutDownMode how = SHUT_WR_MODE) FWS_FUNC_RESTRICT {
+            int ret = 0;
+            if (is_opened_ && !(status_ & SHUTDOWN_SOCKET_STATUS)) {
+                status_ = status_ | SHUTDOWN_SOCKET_STATUS;
+                FEventAction action;
+                if (how == SHUT_RD_MODE) {
+                    action = FEventAction::FEVAC_READ;
+                }
+                else if (how == SHUT_WR_MODE) {
+                    action = FEventAction::FEVAC_WRITE;
+                }
+                else {
+                    action = FEventAction::FEVAC_READ | FEventAction::FEVAC_WRITE;
+                }
+                if (fq_ptr_ != nullptr) {
+                    DeleteFEvent(*fq_ptr_, fd_, action, (void*)this);
+                }
 #ifdef FWS_ENABLE_FSTACK
-            return ff_shutdown(fd_, how);
+                ret = ff_shutdown(fd_, how);
 #else
-            return shutdown(fd_, how);
+                ret = shutdown(fd_, how);
 #endif
+            }
+            return ret;
+        }
+
+        static constexpr size_t DEFAULT_TCP_FUNCTION_CAP = 8;
+        using OnReadableFunc = stdext::inplace_function<void(TCPSocket&, IOBuffer&, void*), DEFAULT_TCP_FUNCTION_CAP>;
+        using OnWritableFunc = stdext::inplace_function<void(TCPSocket&, size_t, void*), DEFAULT_TCP_FUNCTION_CAP>;
+        using OnOpenFunc = stdext::inplace_function<void(TCPSocket&, void*), DEFAULT_TCP_FUNCTION_CAP>;
+        using OnCloseFunc = stdext::inplace_function<void(TCPSocket&, void*), DEFAULT_TCP_FUNCTION_CAP>;
+        using OnEofFunc = stdext::inplace_function<void(TCPSocket&, void*), DEFAULT_TCP_FUNCTION_CAP>;
+        using OnErrorFunc = stdext::inplace_function<void(TCPSocket&, int, std::string_view, void*), DEFAULT_TCP_FUNCTION_CAP>;
+
+        int SetOnReadable(OnReadableFunc on_readable) {
+            on_readable_ = std::move(on_readable);
+            return 0;
+        }
+
+        int SetOnWritable(OnWritableFunc on_writable) {
+            on_writable_ = std::move(on_writable);
+            return 0;
+        }
+
+        int SetOnOpen(OnOpenFunc on_open) {
+            on_open_ = std::move(on_open);
+            return 0;
+        }
+
+        int SetOnClose(OnCloseFunc on_close) {
+            on_close_ = std::move(on_close);
+            return 0;
+        }
+
+        int SetOnEof(OnEofFunc on_eof) {
+            on_eof_ = std::move(on_eof);
+            return 0;
+        }
+
+        int SetOnError(OnErrorFunc on_error) {
+            on_error_ = std::move(on_error);
+            return 0;
         }
 
     protected:
         int fd_;
+        bool is_opened_;
+        int8_t status_;
+        bool last_write_failed_;
+        FQueue *fq_ptr_;
+        void *data_ptr_;
+
+
+        OnReadableFunc on_readable_;
+        OnWritableFunc on_writable_;
+        OnOpenFunc on_open_;
+        OnCloseFunc on_close_;
+        OnEofFunc on_eof_; // shutdown by peer
+        OnErrorFunc on_error_;
+        static_assert(sizeof(on_readable_) == 16);
+        static_assert(alignof(decltype(on_readable_)) == 8);
+
+
 
         int GetAddrFromStr(const char* addr, uint16_t port, sockaddr_in& sock_addr_in) {
             sock_addr_in.sin_family = AF_INET;
             sock_addr_in.sin_port = htons(port);
             return inet_pton(AF_INET, addr, &sock_addr_in.sin_addr);
         }
+
+        OnReadableFunc& on_readable() {
+            return on_readable_;
+        }
+
+        OnWritableFunc& on_writable() {
+            return on_writable_;
+        }
+
+        OnOpenFunc& on_open() {
+            return on_open_;
+        }
+
+        OnCloseFunc& on_close() {
+            return on_close_;
+        }
+
+        OnEofFunc& on_eof() {
+            return on_eof_;
+        }
+
+        OnErrorFunc& on_error() {
+            return on_error_;
+        }
+
+
+
     };
+
+    static_assert(sizeof(TCPSocket) == 128);
+    static_assert(alignof(TCPSocket) == 16);
+
 
 } // namespace fws

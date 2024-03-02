@@ -4,14 +4,9 @@
 
 namespace test {
 
-    // vu-la01
 //    inline constexpr const char* const SERVER_IP = "10.5.96.3";
-    // vu-la06
 //    inline constexpr const char* const SERVER_IP = "10.5.96.7";
 
-    // aws-vi01
-//    inline constexpr const char* const SERVER_IP = "172.31.99.99";
-//    inline constexpr const char* const SERVER_IP = "172.31.98.130";
 
 
 //    inline constexpr uint16_t SERVER_PORT = 58600;

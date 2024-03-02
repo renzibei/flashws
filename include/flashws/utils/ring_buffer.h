@@ -104,7 +104,7 @@ namespace frb {
         constexpr BidirectionalIterator() noexcept: buf_(nullptr), pos_(0), mask_(0) {}
 
         constexpr explicit BidirectionalIterator(T* buf, std::size_t pos, std::size_t mask)
-            noexcept: buf_(buf), pos_(pos), mask_(mask) {}
+        noexcept: buf_(buf), pos_(pos), mask_(mask) {}
 
         reference operator*() const {return buf_[pos_];}
 
@@ -113,7 +113,7 @@ namespace frb {
         }
 
         friend constexpr bool operator== (const BidirectionalIterator<T>&a,
-                const BidirectionalIterator<T>&b) noexcept {
+                                          const BidirectionalIterator<T>&b) noexcept {
             return a.pos_ == b.pos_;
         }
 
@@ -177,11 +177,11 @@ namespace frb {
         constexpr RingBuffer() noexcept: buf_(nullptr), mask_(INIT_MASK), head_(0), tail_(0) {}
 
         constexpr RingBuffer(const Allocator& alloc): Allocator(alloc),
-                    buf_(nullptr), mask_(INIT_MASK), head_(0), tail_(0){}
+                                                      buf_(nullptr), mask_(INIT_MASK), head_(0), tail_(0){}
 
         explicit RingBuffer(size_t count, const T& value, const Allocator& alloc = Allocator())
                 : Allocator(alloc), buf_(nullptr), mask_(INIT_MASK),
-                    head_(0), tail_(0) {
+                  head_(0), tail_(0) {
             size_type cap = std::max(size_type(1U) << detail::RoundUpLog2(count), MIN_CAP);
             mask_ = cap - 1U;
             AllocTraits::allocate(*this, cap);
@@ -195,7 +195,7 @@ namespace frb {
                 : RingBuffer(count, T(), alloc) {}
 
         RingBuffer(const RingBuffer& o, const Allocator& alloc)
-            : RingBuffer(alloc) {
+                : RingBuffer(alloc) {
             if (!o.empty()) {
                 size_type new_cap = size_type(1U) << detail::RoundUpLog2(o.size());
                 SetNewCap(new_cap);
@@ -208,11 +208,11 @@ namespace frb {
         RingBuffer(const RingBuffer& o): RingBuffer(o, AllocTraits::select_on_container_copy_construction(o)) {}
 
         RingBuffer(RingBuffer&& o, const Allocator& alloc) noexcept
-            : Allocator(alloc), buf_(std::exchange(o.buf_, nullptr)),
+                : Allocator(alloc), buf_(std::exchange(o.buf_, nullptr)),
 //            size_(std::exchange(o.size_, 0)),
-            mask_(std::exchange(o.mask_, INIT_MASK)),
-            head_(std::exchange(o.head_, 0)),
-            tail_(std::exchange(o.tail_, 0)) {}
+                  mask_(std::exchange(o.mask_, INIT_MASK)),
+                  head_(std::exchange(o.head_, 0)),
+                  tail_(std::exchange(o.tail_, 0)) {}
 
 
         RingBuffer(RingBuffer&& o) noexcept
@@ -225,14 +225,14 @@ namespace frb {
 
         template< class InputIt >
         RingBuffer(InputIt first, InputIt last, const Allocator& alloc = Allocator())
-            : RingBuffer(alloc) {
+                : RingBuffer(alloc) {
             for (auto it = first; it != last; ++it) {
                 emplace_back(*this);
             }
         }
 
         RingBuffer( std::initializer_list<T> init, const Allocator& alloc = Allocator())
-            : RingBuffer(init.begin(), init.end(), alloc) {}
+                : RingBuffer(init.begin(), init.end(), alloc) {}
 
         RingBuffer& operator=(const RingBuffer& o) {
             auto tmp(o);
@@ -440,6 +440,61 @@ namespace frb {
             mask_ = new_cap - 1U;
         }
 
+
+    }; // class RingBuffer
+
+    template<class Allocator = std::allocator<uint8_t>>
+    class ByteRingBuffer : public RingBuffer<uint8_t, Allocator> {
+        using Base = RingBuffer<uint8_t, Allocator>;
+    public:
+        using size_type = typename Base::size_type;
+
+        void insert_back(const void* FRB_RESTRICT data, size_t size) {
+            size_type cur_mask = this->mask_;
+            size_type cur_cap = cur_mask + 1U;
+            size_type cur_size = this->size();
+            size_type target_size = cur_size + size;
+            if FRB_UNLIKELY(target_size >= cur_mask) {
+                cur_cap = size_type(1U) << detail::RoundUpLog2(target_size + 1U);
+                cur_cap = std::max(cur_cap, Base::MIN_CAP);
+                cur_mask = cur_cap - 1U;
+
+                this->SetNewCap(cur_cap);
+            }
+            size_type tail = this->tail_;
+            auto* FRB_RESTRICT buf = this->buf_;
+            auto* FRB_RESTRICT end_addr = buf + cur_cap;
+            auto* FRB_RESTRICT tail_addr = buf + tail;
+            auto* FRB_RESTRICT theory_end = tail_addr + size;
+            if (theory_end <= end_addr) {
+                memcpy(tail_addr, data, size);
+            }
+            else {
+                size_type first_size = end_addr - tail_addr;
+                memcpy(tail_addr, data, first_size);
+                memcpy(buf, (const uint8_t*)data + first_size, size - first_size);
+            }
+            auto new_tail = (tail + size) & cur_mask;
+            this->tail_ = new_tail;
+        }
+
+        void read_pop_front(void* FRB_RESTRICT data, size_t size) FRB_FUNC_RESTRICT {
+            auto cur_head = this->head_;
+            auto *FRB_RESTRICT  head_addr = this->buf_ + cur_head;
+            auto *FRB_RESTRICT  end_addr = this->buf_ + this->mask_ + 1U;
+            auto *FRB_RESTRICT  theory_end = head_addr + size;
+
+            if (theory_end <= end_addr) {
+                memcpy(data, head_addr, size);
+            }
+            else {
+                auto first_size = end_addr - head_addr;
+                memcpy(data, head_addr, first_size);
+                memcpy((uint8_t* FRB_RESTRICT)data + first_size, this->buf_, size - first_size);
+            }
+            this->head_ = (cur_head + size) & this->mask_;
+        }
+    protected:
 
     };
 

@@ -100,7 +100,7 @@ namespace fws {
 
         int StartListen(const char* host_ip_addr,
                                              uint16_t port, int backlog,
-                     TcpSocket::BindMode bind_mode) {
+                     TCPSocket::BindMode bind_mode) {
             if FWS_UNLIKELY(tcp_socket_.Init() < 0) {
                 return -1;
             }
@@ -119,12 +119,12 @@ namespace fws {
             return 0;
         }
 
-        TcpSocket& tcp_socket() {
+        TCPSocket& tcp_socket() {
             return tcp_socket_;
         }
 
     protected:
-        TcpSocket tcp_socket_;
+        TCPSocket tcp_socket_;
         int poll_us_;
         bool no_delay_;
 

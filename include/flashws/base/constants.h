@@ -8,6 +8,12 @@ namespace fws {
 
     namespace constants {
 
+        constexpr inline bool ENABLE_BUSY_POLL_BY_DEFAULT = true;
+        constexpr inline int BUSY_POLL_US_IF_ENABLED = 800;
+
+        constexpr inline bool ENABLE_NO_DELAY_BY_DEFAULT = true;
+        constexpr inline bool ENABLE_NON_BLOCK_BY_DEFAULT = true;
+
         // This takes the stack space
         constexpr inline size_t MAX_REQ_URI_LENGTH = 512;
 
@@ -21,6 +27,16 @@ namespace fws {
 #else
         constexpr inline size_t MAX_WRITABLE_SIZE_ONE_TIME = 16384;
 #endif
+
+        // Used in the buffer of TLS and TCP read one time.
+#ifdef FWS_ENABLE_FSTACK
+        constexpr inline size_t MAX_READABLE_SIZE_ONE_TIME = 1 << 21;
+#else
+        constexpr inline size_t MAX_READABLE_SIZE_ONE_TIME = 1 << 21;
+#endif
+        // Padding before the buffer if using TCP/TLS read. WS may need this.
+        constexpr inline size_t DEFAULT_READ_BUF_PRE_PADDING_SIZE = 32;
+
 //        constexpr inline size_t MAX_WRITABLE_SIZE_ONE_TIME = 1UL << 21;
 
         // The actual maximum size of frame size is 4 GB for both recv and send
@@ -35,6 +51,8 @@ namespace fws {
         constexpr inline size_t WS_SERVER_TX_CONTROL_HDR_SIZE = 2;
         constexpr inline size_t WS_CLIENT_TX_CONTROL_HDR_SIZE = 6;
         constexpr inline size_t WS_MAX_CONTROL_FRAME_SIZE = 125;
+
+        static_assert(SUGGEST_RESERVE_WS_HDR_SIZE <= DEFAULT_READ_BUF_PRE_PADDING_SIZE);
 
         // Defined in RFC doc
         constexpr inline const char SEC_WS_VERSION[] = "13";
