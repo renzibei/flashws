@@ -10,6 +10,9 @@ namespace fws {
         BIO *shared_rbio;
         BIO *shared_wbio;
         BIO_METHOD *shared_bio_meth;
+        TLSSharedData(TCPSocket *cur_sock_ptr, IOBuffer &&buf, BIO *shared_rbio, BIO *shared_wbio, BIO_METHOD *shared_bio_meth):
+            cur_sock_ptr(cur_sock_ptr), buf(std::move(buf)), shared_rbio(shared_rbio), shared_wbio(shared_wbio),
+            shared_bio_meth(shared_bio_meth) {}
         TLSSharedData() = default;
         TLSSharedData(const TLSSharedData&) = delete;
         TLSSharedData& operator=(const TLSSharedData&) = delete;

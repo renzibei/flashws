@@ -62,6 +62,9 @@ namespace fws {
             SocketData(SocketData&&) = default;
             SocketData& operator=(SocketData&&) = default;
 
+            SocketData(void *data_ptr, size_t user_data_size, SocketType type, bool is_server):
+                data_ptr(data_ptr), user_data_size(user_data_size), type(type), is_server(is_server) {}
+
             TCPSocket *sock_ptr() {
                 return static_cast<TCPSocket*>(data_ptr);
             }
