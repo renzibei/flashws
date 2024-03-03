@@ -90,7 +90,7 @@ namespace test {
 //                printf("fd: %d, on_open\n", sock.fd());
             });
 
-            client.SetOnReadable([&](SockType& sock, fws::IOBuffer &io_buf, void *user_data){
+            client.SetOnReadable([&](SockType& sock, fws::IOBuffer &&io_buf, void *user_data){
 //
                 int cur_fd = sock.fd();
                 auto find_it = fd_to_socks.find(cur_fd);
@@ -98,13 +98,17 @@ namespace test {
                 auto *client_ctx = &(find_it->second);
                 auto* FWS_RESTRICT temp_buf = &client_ctx->io_buf;
                 uint8_t* FWS_RESTRICT start_data = temp_buf->data + temp_buf->start_pos + temp_buf->size;
-                memcpy(start_data, io_buf.data + io_buf.start_pos, io_buf.size);
-                auto *sock_ptr = &sock;
-//                auto &socket = ctx->fd_to_socks[cur_fd];
                 ssize_t recv_len = io_buf.size;
                 FWS_ASSERT(recv_len > 0);
-
-                temp_buf->size += recv_len;
+                if (io_buf.size == MAX_DATA_LEN) {
+                    FWS_ASSERT(temp_buf->size == 0);
+                    *temp_buf = std::move(io_buf);
+                }
+                else {
+                    memcpy(start_data, io_buf.data + io_buf.start_pos, io_buf.size);
+                    temp_buf->size += recv_len;
+                }
+                auto *sock_ptr = &sock;
 
                 recv_bytes_sum += recv_len;
 
@@ -168,7 +172,7 @@ namespace test {
                     if FWS_UNLIKELY(this_client_finish_all_connection) {
                         return ;
                     }
-                    if FWS_UNLIKELY(!(this->loop_cnt & 0xffffUL)) {
+                    if FWS_UNLIKELY(!(this->loop_cnt & 0xfffUL)) {
                         double round_trip_us = double(round_trip_ns) / 1000.0;
                         constexpr int64_t BITS_PER_BYTE = 8;
                         auto now_ns_from_epoch = std::chrono::high_resolution_clock::now().time_since_epoch().count();

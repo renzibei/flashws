@@ -49,7 +49,8 @@ namespace fws {
 
             /* Load certificate and private key files, and check consistency */
             if (certfile && keyfile) {
-                if (SSL_CTX_use_certificate_file(ctx_, certfile, SSL_FILETYPE_PEM) != 1) {
+//                if (SSL_CTX_use_certificate_file(ctx_, certfile, SSL_FILETYPE_PEM) != 1) {
+                if (SSL_CTX_use_certificate_chain_file(ctx_, certfile) != 1) {
                     SetErrorFormatStr("SSL_CTX_use_certificate_file failed: %s",
                                       ERR_error_string(ERR_get_error(), nullptr));
                     ERR_clear_error();

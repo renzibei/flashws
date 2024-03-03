@@ -7,13 +7,14 @@ add_library(flashws INTERFACE)
 
 add_library(fws::flashws ALIAS flashws)
 
-find_package(OpenSSL REQUIRED)
+
 
 target_include_directories(flashws INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 OPTION(FWS_ENABLE_FSTACK "Use f-stack, other wise system api" ON)
 OPTION(FWS_DEBUG "In Debug Mode" ON)
 OPTION(FWS_DEV_DEBUG "Debug Mode For Development" OFF)
+OPTION(FWS_USE_BORINGSSL "Use BoringSSL" OFF)
 
 if(FWS_DEBUG)
     target_compile_definitions(flashws
@@ -28,6 +29,8 @@ endif()
 MESSAGE(STATUS "FWS_ENABLE_FSTACK ${FWS_ENABLE_FSTACK}")
 MESSAGE(STATUS "FWS_DEBUG: ${FWS_DEBUG}")
 MESSAGE(STATUS "FWS_DEV_DEBUG ${FWS_DEV_DEBUG}")
+MESSAGE(STATUS "FWS_USE_BORINGSSL ${FWS_USE_BORINGSSL}")
+
 
 # Check if the compiler supports AVX2
 include(CheckCXXCompilerFlag)
@@ -43,11 +46,26 @@ else()
     message(STATUS "AVX2 not supported by the compiler.")
 endif()
 
-target_link_libraries(
-        flashws
-        INTERFACE
-        OpenSSL::SSL
-)
+if (FWS_USE_BORINGSSL AND NOT FWS_ENABLE_FSTACK)
+    add_subdirectory(thirdparty/boringssl)
+    target_link_libraries(
+            flashws
+            INTERFACE
+            BoringSSL::crypto
+            BoringSSL::ssl
+    )
+else()
+    find_package(OpenSSL REQUIRED)
+    target_link_libraries(
+            flashws
+            INTERFACE
+            OpenSSL::SSL
+            OpenSSL::Crypto
+    )
+endif()
+
+
+
 
 if(FWS_ENABLE_FSTACK)
     target_compile_definitions(flashws
@@ -58,12 +76,11 @@ if(FWS_ENABLE_FSTACK)
 
     pkg_check_modules(DPDK REQUIRED IMPORTED_TARGET libdpdk)
 
+
     target_compile_options(flashws
             INTERFACE
             ${DPDK_CFLAGS}
             )
-
-
 
     target_link_options(flashws
             INTERFACE
@@ -77,9 +94,9 @@ if(FWS_ENABLE_FSTACK)
             -lm
             -lrt
             -ldl
-            -lcrypto
             -lnuma
             )
+
 endif()
 
 

@@ -169,7 +169,7 @@ namespace fws {
         }
 
         void InitUnderOnReadImp() {
-            Base::under_socket().SetOnReadable([](UnderSocket& under_s, IOBuffer& recv_buf, void* /*user_data*/) {
+            Base::under_socket().SetOnReadable([](UnderSocket& under_s, IOBuffer&& recv_buf, void* /*user_data*/) {
 
                 int ret = 0;
                 auto &sock = static_cast<WSServerSocket&>(under_s);

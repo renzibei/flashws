@@ -2,7 +2,7 @@
 
 //#define SERVER_PORT     58600
 #define SERVER_PORT 58600
-#define MAX_DATA_LEN    (1 << 12)
+#define MAX_DATA_LEN    (1 << 18)
 //#define MAX_DATA_LEN 64
 
 //#define TEST_TIMES      1'00'000
@@ -40,14 +40,14 @@ namespace test {
     inline constexpr const char* ca_file_path = "../certs/ca.pem";
 
 
-    inline constexpr size_t MSG_LIMIT_PER_CLIENT = 1000;
+    inline constexpr size_t MSG_LIMIT_PER_CLIENT = 100'000;
 //    inline constexpr size_t MSG_LIMIT_PER_CLIENT = 50;
 
-    inline constexpr size_t CON_CLIENT_NUM = 100;
+    inline constexpr size_t CON_CLIENT_NUM = 1;
 
     inline constexpr size_t LISTEN_BACKLOG = 4096;
 
-    inline constexpr size_t REBORN_LIMIT_FOR_CLIENT = 100;
+    inline constexpr size_t REBORN_LIMIT_FOR_CLIENT = 1;
 
     inline constexpr size_t TOTAL_MSG_CNT = MSG_LIMIT_PER_CLIENT * CON_CLIENT_NUM * REBORN_LIMIT_FOR_CLIENT;
 

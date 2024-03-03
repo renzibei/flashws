@@ -141,14 +141,23 @@ namespace test {
 //            printf("OnOpen, fd: %d\n", sock.fd());
         });
 
-        tcp_socket.SetOnReadable([&](SockType &sock, fws::IOBuffer &buf, void* user_data) {
+        tcp_socket.SetOnReadable([&](SockType &sock, fws::IOBuffer &&buf, void* user_data) {
 
             auto &FWS_RESTRICT client_ctx = *(Context::ClientCtx*)user_data;
             auto &FWS_RESTRICT io_buf = client_ctx.io_buf;
-            memcpy(io_buf.data + io_buf.start_pos + io_buf.size, buf.data + buf.start_pos, buf.size);
             ssize_t read_len = buf.size;
             FWS_ASSERT(read_len > 0);
-            io_buf.size += read_len;
+            if (buf.size == MAX_DATA_LEN) {
+                FWS_ASSERT(io_buf.size == 0);
+                io_buf = std::move(buf);
+            }
+            else {
+                memcpy(io_buf.data + io_buf.start_pos + io_buf.size, buf.data + buf.start_pos, buf.size);
+                io_buf.size += read_len;
+            }
+
+
+
             ctx->last_interval_recv_bytes += read_len;
 //            printf("fd: %d, on_readable, read_len: %zu bytes, io_buf size: %ld\n",
 //                   sock.fd(), size_t(read_len), io_buf.size);

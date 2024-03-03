@@ -182,7 +182,7 @@ namespace fws {
 
 
         void InitUnderOnReadImp() {
-            Base::under_socket().SetOnReadable([](UnderSocket& under_s, IOBuffer& recv_buf, void* /*user_data*/) {
+            Base::under_socket().SetOnReadable([](UnderSocket& under_s, IOBuffer&& recv_buf, void* /*user_data*/) {
 //                auto recv_buf = under_socket().Read(available_size, constants::SUGGEST_RESERVE_WS_HDR_SIZE);
                 int ret = 0;
                 auto &sock = static_cast<WSClientSocket&>(under_s);
@@ -356,7 +356,7 @@ namespace fws {
             FillRandom16Bytes(random_16bytes);
             constexpr size_t SEC_KEY_LEN = GetBase64EncodeLength(sizeof(random_16bytes));
             uint8_t sec_key_buf[SEC_KEY_LEN];
-            Base64Encode(random_16bytes, sizeof(random_16bytes), sec_key_buf);
+            FixBase64Encode<sizeof(random_16bytes)>(random_16bytes, sec_key_buf);
             // Calculate the sha1 of sec key in resp from server, not base64 yet
             Sha1SecKey((const char*)sec_key_buf, expect_reply_sha1);
             static constexpr char SEC_KEY_STR[] = "Sec-WebSocket-Key: ";
@@ -511,7 +511,7 @@ namespace fws {
                             break;
                         }
                         char base64_buf[GetBase64EncodeLength(20)];
-                        Base64Encode(expect_reply_sha1.data(), 20, base64_buf);
+                        Fix20Base64Encode<20>(expect_reply_sha1.data(), base64_buf);
                         if (memcmp(field_val, base64_buf, 28) != 0) break;
                         accept_ok = true;
                     }

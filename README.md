@@ -11,8 +11,8 @@ library).
 We abstracted the TCP layer once. Various implementations are available for TCP.
 Currently we have implemented [F-Stack](https://github.com/F-Stack/f-stack)
 (TCP/IP network library based on DPDK) and
-POSIX API. It should be noted that we do not recommend the implementation of the
-POSIX API, because we have not optimized it.
+POSIX API (including epoll in Linux). Even if you don't have DPDK, you can still 
+enjoy the high performance we provide.
 
 Technologies including Zero Copy, Huge Page, SIMD, etc. are used to optimize our
 implementation.
@@ -21,10 +21,11 @@ implementation.
 
 Our current implementation is based on F-Stack to obtain the TCP/IP protocol
 stack. So you need to install F-Stack and DPDK beforehand, unless you want to
-use POSIX implementation (and then the advantage is gone). See the website of
+use POSIX implementation (and then some advantages are gone). See the website of
 [F-Stack](https://github.com/F-Stack/f-stack) for details.
 
-Also, currently we also need openssl.
+Also, currently we need openssl or boringssl. If you use dpdk, openssl need to be
+linked to it.
 
 ## Build
 
