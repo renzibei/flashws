@@ -2,3 +2,6 @@
 [submodule "thirdparty/HdrHistogram_c"]
 	path = thirdparty/HdrHistogram_c
 	url = https://github.com/HdrHistogram/HdrHistogram_c.git
+[submodule "thirdparty/boringssl"]
+	path = thirdparty/boringssl
+	url = https://github.com/google/boringssl.git

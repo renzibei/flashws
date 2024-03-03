@@ -51,8 +51,8 @@ if (FWS_USE_BORINGSSL AND NOT FWS_ENABLE_FSTACK)
     target_link_libraries(
             flashws
             INTERFACE
-            BoringSSL::crypto
-            BoringSSL::ssl
+            crypto
+            ssl
     )
 else()
     find_package(OpenSSL REQUIRED)
