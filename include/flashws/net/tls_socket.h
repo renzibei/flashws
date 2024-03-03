@@ -25,11 +25,13 @@ namespace fws {
         static int custom_bio_write(BIO* bio, const char* data, int length) {
 
             auto* custom_bio = static_cast<TLSSharedData*>(BIO_get_data(bio));
-            ssize_t written = custom_bio->cur_sock_ptr->Write(data, length);
+//            int target_len = std::min(length, 1 << 14);
+            int target_len = length;
+            ssize_t written = custom_bio->cur_sock_ptr->Write(data, target_len);
 #if defined(FWS_DEV_DEBUG)
             printf("IN custom_bio_write, fd:%d written: %zd\n", custom_bio->cur_sock_ptr->fd(), written);
 #endif
-            if (!written) {
+            if (!written || (written < 0 && errno == EAGAIN)) {
                 BIO_set_flags(bio, BIO_FLAGS_SHOULD_RETRY | BIO_FLAGS_WRITE);
                 return -1;
             }
@@ -158,7 +160,7 @@ namespace fws {
             read_wants_write_ = false;
             write_wants_read_ = false;
             SetOnWritable([](TLSSocket&, size_t, void*) {});
-            SetOnReadable([](TLSSocket&, IOBuffer&, void*) {});
+            SetOnReadable([](TLSSocket&, IOBuffer&&, void*) {});
             SetOnOpen([](TLSSocket&, void*) {});
             SetOnClose([](TLSSocket&, void*) {});
             SetOnEof([](TLSSocket&, void*) {});
@@ -191,7 +193,7 @@ namespace fws {
         }
 
         static constexpr size_t DEFAULT_TLS_FUNCTION_CAP = 8;
-        using TLSOnReadbleFunc = stdext::inplace_function<void(TLSSocket&, IOBuffer&, void*), DEFAULT_TLS_FUNCTION_CAP>;
+        using TLSOnReadbleFunc = stdext::inplace_function<void(TLSSocket&, IOBuffer&&, void*), DEFAULT_TLS_FUNCTION_CAP>;
         using TLSOnWritableFunc = stdext::inplace_function<void(TLSSocket&, size_t, void*), DEFAULT_TLS_FUNCTION_CAP>;
         using TLSOnOpenFunc = stdext::inplace_function<void(TLSSocket&, void*), DEFAULT_TLS_FUNCTION_CAP>;
         using TLSOnCloseFunc = stdext::inplace_function<void(TLSSocket&, void*), DEFAULT_TLS_FUNCTION_CAP>;
@@ -465,7 +467,7 @@ namespace fws {
         }
 
         void InitBaseOnReadable() {
-            Base::SetOnReadable([](TCPSocket& tcp_sock, IOBuffer& io_buf, void*) {
+            Base::SetOnReadable([](TCPSocket& tcp_sock, IOBuffer&& io_buf, void*) {
                 auto &sock = static_cast<TLSSocket&>(tcp_sock);
 //                sock.bio_data_.buf = std::move(io_buf);
                 sock.shared_tls_data_->buf = std::move(io_buf);
@@ -499,7 +501,7 @@ namespace fws {
                         if (ssl_read_ret <= 0) {
                             should_stop_read = true;
                             int ssl_err = SSL_get_error(sock.ssl_, ssl_read_ret);
-                            if (ssl_err != SSL_ERROR_WANT_READ && ssl_err != SSL_ERROR_WANT_WRITE && ssl_err != SSL_ERROR_ZERO_RETURN) {
+                            if FWS_UNLIKELY(ssl_err != SSL_ERROR_WANT_READ && ssl_err != SSL_ERROR_WANT_WRITE && ssl_err != SSL_ERROR_ZERO_RETURN) {
                                 ERR_print_errors_fp(stdout);
                                 if (ssl_err == SSL_ERROR_SSL || ssl_err == SSL_ERROR_SYSCALL) {
                                     ERR_clear_error();
@@ -507,21 +509,21 @@ namespace fws {
                                 static_cast<Base *>(&sock)->Close();
                                 return;
                             } else {
-                                if (ssl_err == SSL_ERROR_WANT_WRITE) {
+                                if FWS_UNLIKELY(ssl_err == SSL_ERROR_WANT_WRITE) {
                                     sock.read_wants_write_ = true;
                                 }
 
-                                if (sock.shared_tls_data_->buf.size > 0) {
+                                if FWS_UNLIKELY(sock.shared_tls_data_->buf.size > 0) {
                                     static_cast<Base *>(&sock)->Close();
                                 }
                                 if (ret_buf.size == 0) {
                                     break;
                                 }
-                                sock.tls_on_readable_(sock, ret_buf, tls_user_data_ptr);
-                                if (ssl_err == SSL_ERROR_ZERO_RETURN) {
+                                sock.tls_on_readable_(sock, std::move(ret_buf), tls_user_data_ptr);
+                                if FWS_UNLIKELY(ssl_err == SSL_ERROR_ZERO_RETURN) {
                                     sock.tls_on_eof_(sock, tls_user_data_ptr);
                                 }
-                                if (!sock.is_open()) {
+                                if FWS_UNLIKELY(!sock.is_open()) {
                                     return;
                                 }
                                 break;
@@ -529,8 +531,8 @@ namespace fws {
                         } // if (ssl_read_ret <= 0)
                         ret_buf.size += ssl_read_ret;
                         if (ret_buf.size == buf_cap) {
-                            sock.tls_on_readable_(sock, ret_buf, tls_user_data_ptr);
-                            if (!sock.is_open()) {
+                            sock.tls_on_readable_(sock, std::move(ret_buf), tls_user_data_ptr);
+                            if FWS_UNLIKELY(!sock.is_open()) {
                                 return;
                             }
                             ret_buf = RequestBuf(buf_cap + constants::DEFAULT_READ_BUF_PRE_PADDING_SIZE * 2);
@@ -540,7 +542,7 @@ namespace fws {
                     } // while (true)
                 } // while (!should_stop_read)
 
-                if (sock.write_wants_read_) {
+                if FWS_UNLIKELY(sock.write_wants_read_) {
                     sock.write_wants_read_ = false;
                     static_cast<Base*>(&sock)->on_writable()(static_cast<Base&>(sock), 0, tls_user_data_ptr);
 //                    sock.tls_on_writable_(sock, 0, tls_user_data_ptr);
@@ -549,7 +551,7 @@ namespace fws {
                     }
                 }
 
-                if (SSL_get_shutdown(sock.ssl_) & SSL_RECEIVED_SHUTDOWN) {
+                if FWS_UNLIKELY(SSL_get_shutdown(sock.ssl_) & SSL_RECEIVED_SHUTDOWN) {
                     static_cast<Base *>(&sock)->Close();
                     return;
                 }
@@ -562,9 +564,8 @@ namespace fws {
                 void *tls_user_data_ptr = static_cast<TLSSocket*>(&sock) + 1;
                 if (sock.read_wants_write_) {
                     sock.read_wants_write_ = false;
-                    IOBuffer empty_buf{};
                     static_cast<TCPSocket&>(sock).on_readable()(static_cast<TCPSocket&>(sock),
-                            empty_buf, tls_user_data_ptr);
+                            IOBuffer{}, tls_user_data_ptr);
 //                    sock.tls_on_readable_(sock, empty_buf, tls_user_data_ptr);
                 }
                 sock.tls_on_writable_(sock, max_write_size, tls_user_data_ptr);

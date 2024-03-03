@@ -816,7 +816,7 @@ namespace fws {
             Sha1SecKey(in_sec_key, sha1_buf);
             assert(GetBase64EncodeLength(20) == 29);
 
-            fws::Base64Encode(sha1_buf.data(), 20, out_sec_key);
+            fws::Fix20Base64Encode<20>(sha1_buf.data(), out_sec_key);
         }
 
 

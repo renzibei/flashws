@@ -577,7 +577,6 @@ namespace fws {
                                 fprintf(stderr, "Cannot find socket for ptr: %p in read event, n_events: %d\n",
                                         sock_ptr, n_events);
                                 std::abort();
-                                continue;
                             }
 //                    auto& client_data = find_it->second;
                             auto &sock = *find_it->second.sock_ptr();
@@ -605,16 +604,18 @@ namespace fws {
                                     IOBuffer buf = sock.Read(max_readable_bytes,
                                                              constants::DEFAULT_READ_BUF_PRE_PADDING_SIZE);
                                     should_continue_read = false;
-                                    if (buf.size > 0) {
-                                        sock.on_readable_(sock, buf, user_data_ptr);
-                                        if (buf.size == (ssize_t) max_readable_bytes &&
+                                    ssize_t buf_size = buf.size;
+                                    if (buf_size > 0) {
+
+                                        sock.on_readable_(sock, std::move(buf), user_data_ptr);
+                                        if (buf_size == (ssize_t) max_readable_bytes &&
                                             sock.is_open()) {
                                             should_continue_read = true;
                                         } else if FWS_UNLIKELY(!sock.is_open()) {
                                             loop->DeleteFd(sock_ptr, false);
                                         }
 
-                                    } else if (buf.size == 0) {
+                                    } else if (buf_size == 0) {
                                         if (sock.status() & SHUTDOWN_SOCKET_STATUS) {
 //                                    sock.on_close_(sock, client_data.ptr);
 //                                        printf("DeleteFd %d in event.is_readable, buf.size == 0, already in SHUTDOWN\n", cur_fd);

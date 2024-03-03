@@ -210,7 +210,9 @@ namespace test {
                         int64_t round_trip_ns = std::llround(pass_tick * cpu_timer.ns_per_tick());
                         rtt_hist.AddValue(round_trip_ns);
 
-
+//                        size_t recv_hash = HashArr(temp_buf_->data + temp_buf_->start_pos, temp_buf_->size);
+//                        FWS_ASSERT(recv_hash == data_hash);
+                        FWS_ASSERT(temp_buf_->size == MAX_DATA_LEN);
                         ++loop_cnt;
                         auto client_msg_cnt = ++client_ctx.msg_cnt;
                         if (client_msg_cnt == MSG_LIMIT_PER_CLIENT) {

@@ -125,6 +125,8 @@ namespace fws {
         }
 
         [[nodiscard]] int64_t readable_size() const {
+            // TODO: Investigate how to tune this.
+//            return constants::MAX_READABLE_SIZE_ONE_TIME;
             return data;
         }
 

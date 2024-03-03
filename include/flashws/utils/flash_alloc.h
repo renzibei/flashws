@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cassert>
+#include <string>
 //#include <execinfo.h>
 //#include <unistd.h>
 //#include <dlfcn.h>

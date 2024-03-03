@@ -58,7 +58,7 @@ namespace fws {
             last_write_failed_(std::exchange(o.last_write_failed_, false)),
             fq_ptr_(std::exchange(o.fq_ptr_, nullptr)),
             data_ptr_(std::exchange(o.data_ptr_, nullptr)),
-            on_readable_(std::exchange(o.on_readable_, [](TCPSocket&, IOBuffer&, void*){})),
+            on_readable_(std::exchange(o.on_readable_, [](TCPSocket&, IOBuffer&&, void*){})),
             on_writable_(std::exchange(o.on_writable_, [](TCPSocket&, size_t, void*){})),
             on_open_(std::exchange(o.on_open_, [](TCPSocket&, void*){})),
             on_close_(std::exchange(o.on_close_, [](TCPSocket&, void*){})),
@@ -110,7 +110,7 @@ namespace fws {
             last_write_failed_ = false;
             fq_ptr_ = fq_ptr;
             data_ptr_ = nullptr;
-            on_readable_ = [](TCPSocket&, IOBuffer&, void*){};
+            on_readable_ = [](TCPSocket&, IOBuffer&&, void*){};
             on_writable_ = [](TCPSocket&, size_t, void*){};
             on_open_ = [](TCPSocket&, void*){};
             on_close_ = [](TCPSocket&, void*){};
@@ -483,7 +483,7 @@ namespace fws {
         }
 
         static constexpr size_t DEFAULT_TCP_FUNCTION_CAP = 8;
-        using OnReadableFunc = stdext::inplace_function<void(TCPSocket&, IOBuffer&, void*), DEFAULT_TCP_FUNCTION_CAP>;
+        using OnReadableFunc = stdext::inplace_function<void(TCPSocket&, IOBuffer&&, void*), DEFAULT_TCP_FUNCTION_CAP>;
         using OnWritableFunc = stdext::inplace_function<void(TCPSocket&, size_t, void*), DEFAULT_TCP_FUNCTION_CAP>;
         using OnOpenFunc = stdext::inplace_function<void(TCPSocket&, void*), DEFAULT_TCP_FUNCTION_CAP>;
         using OnCloseFunc = stdext::inplace_function<void(TCPSocket&, void*), DEFAULT_TCP_FUNCTION_CAP>;
