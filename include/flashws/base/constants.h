@@ -14,6 +14,10 @@ namespace fws {
         constexpr inline bool ENABLE_NO_DELAY_BY_DEFAULT = true;
         constexpr inline bool ENABLE_NON_BLOCK_BY_DEFAULT = true;
 
+        // If this is enabled, the FLoop will update the time every time there
+        // is an event. Users can access the time by calling last_event_time_ns()
+        constexpr inline bool ENABLE_FLOOP_EVENT_TIME_UPDATE = false;
+
         // This takes the stack space
         constexpr inline size_t MAX_REQ_URI_LENGTH = 512;
 
