@@ -5,6 +5,9 @@
 
 #include "flashws/base/base_include.h"
 #include "flashws/net/fevent.h"
+#include "flashws/net/floop.h"
+#include "flashws/net/ws_client_socket.h"
+#include "flashws/net/ws_server_socket.h"
 
 
 

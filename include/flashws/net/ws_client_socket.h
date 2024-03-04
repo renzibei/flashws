@@ -567,4 +567,6 @@ namespace fws {
 
     }; // class WSClientSocket
 
+    using WSSClientSocket = WSClientSocket<true>;
+
 } // namespace fws_client_socket

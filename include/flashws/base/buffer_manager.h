@@ -87,10 +87,10 @@ namespace fws {
 
     // TODO: maybe can set the capacity to the true capacity in underlying
     // data is null if fail
-    IOBuffer RequestBuf(size_t size) {
-        void* p = MemPoolEnv::instance().allocate(size);
+    IOBuffer RequestBuf(size_t cap, size_t start_pos = 0) {
+        void* p = MemPoolEnv::instance().allocate(cap);
         // Inc ref count in the constructor
-        IOBuffer ret((uint8_t*)p, 0, 0, size);
+        IOBuffer ret((uint8_t*)p, 0, start_pos, cap);
         return ret;
     }
 

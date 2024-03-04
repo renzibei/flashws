@@ -56,8 +56,6 @@ namespace fws {
                     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/'};
 
             constexpr size_t in_len = N;
-//            constexpr size_t out_len = GetBase64EncodeLength(N);
-//            char ret[out_len] {};
             size_t i = 0;
             char* FWS_RESTRICT p  = const_cast<char *>(ret);
 
@@ -82,7 +80,41 @@ namespace fws {
                 *p++ = '=';
             }
 
-//            return fixed_string<out_len>(ret);
+        }
+
+        static void DyBase64Encode(const char* FWS_RESTRICT data, size_t in_len, char* FWS_RESTRICT ret) {
+            static constexpr char sEncodingTable[] = {
+                    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+                    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+                    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
+                    'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+                    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/'};
+
+//            constexpr size_t in_len = N;
+            size_t i = 0;
+            char* FWS_RESTRICT p  = const_cast<char *>(ret);
+            size_t in_len_2 = in_len - 2;
+            for (i = 0; (in_len > 2) & (i < in_len_2); i += 3) {
+                *p++ = sEncodingTable[(data[i] >> 2) & 0x3F];
+                *p++ = sEncodingTable[((data[i] & 0x3) << 4) |
+                                      ((int)(data[i + 1] & 0xF0) >> 4)];
+                *p++ = sEncodingTable[((data[i + 1] & 0xF) << 2) |
+                                      ((int)(data[i + 2] & 0xC0) >> 6)];
+                *p++ = sEncodingTable[data[i + 2] & 0x3F];
+            }
+            if (i < in_len) {
+                *p++ = sEncodingTable[(data[i] >> 2) & 0x3F];
+                if (i == (in_len - 1)) {
+                    *p++ = sEncodingTable[((data[i] & 0x3) << 4)];
+                    *p++ = '=';
+                } else {
+                    *p++ = sEncodingTable[((data[i] & 0x3) << 4) |
+                                          ((int)(data[i + 1] & 0xF0) >> 4)];
+                    *p++ = sEncodingTable[((data[i + 1] & 0xF) << 2)];
+                }
+                *p++ = '=';
+            }
+
         }
 
         static inline void uws_base64(unsigned char * FWS_RESTRICT src, char* FWS_RESTRICT dst) {
@@ -119,6 +151,12 @@ namespace fws {
     inline int FixBase64Encode(const void* FWS_RESTRICT src, void* FWS_RESTRICT dst) {
         detail::FixBase64Encode<src_len>((const char*)src, (char*)dst);
         constexpr size_t dst_len = GetBase64EncodeLength(src_len);
+        return dst_len;
+    }
+
+    inline int DynamicBase64Encode(const void* FWS_RESTRICT src, int src_len, void* FWS_RESTRICT dst) {
+        detail::DyBase64Encode((const char*)src, src_len, (char*)dst);
+        int dst_len = GetBase64EncodeLength(src_len);
         return dst_len;
     }
 
