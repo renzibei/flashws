@@ -132,6 +132,11 @@ namespace test {
             return -1;
         }
 
+//        ctx.loop.SetOnEventFunc([](fws::FLoop<fws::FlashAllocator<char>>& loop){
+//            printf("OnEventFunc called, cur sock count: %zu\n", loop.socket_count());
+//
+//        });
+
         if constexpr (ENABLE_TLS) {
             if (fws::SSLManager::instance().Init(SHOULD_VERIFY_CERT, cert_file_path, key_file_path,
                                                  nullptr) < 0) {
