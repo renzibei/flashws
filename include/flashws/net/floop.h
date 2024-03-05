@@ -40,6 +40,9 @@ namespace fws {
         bool stop_run_flag_{};
         int64_t last_event_time_ns_{};
 
+        using OnEventFunc = stdext::inplace_function<void(FLoop&)>;
+        OnEventFunc on_event_;
+
         static constexpr size_t MAX_MONITOR_EVENT_NUM = 1024;
 
         enum SocketType: int {
@@ -116,6 +119,7 @@ namespace fws {
             fq_(std::move(o.fq_)),
             stop_run_flag_(o.stop_run_flag_),
             last_event_time_ns_(o.last_event_time_ns_),
+            on_event_(std::move(o.on_event_)),
             wait_evs_(std::move(o.wait_evs_)),
             fd_to_socks_(std::move(o.fd_to_socks_)),
             to_delete_socks_(std::move(o.to_delete_socks_)),
@@ -128,6 +132,7 @@ namespace fws {
             std::swap(fq_, o.fq_);
             std::swap(stop_run_flag_, o.stop_run_flag_);
             std::swap(last_event_time_ns_, o.last_event_time_ns_);
+            std::swap(on_event_, o.on_event_),
             std::swap(wait_evs_, o.wait_evs_);
             std::swap(fd_to_socks_, o.fd_to_socks_);
             std::swap(to_delete_socks_, o.to_delete_socks_);
@@ -170,6 +175,7 @@ namespace fws {
             }
             stop_run_flag_ = true;
             last_event_time_ns_ = GetNowNsFromEpoch();
+            on_event_ = [](FLoop&){};
             wait_evs_ = {MAX_MONITOR_EVENT_NUM, FEvent{}};
             to_delete_socks_.reserve(DEFAULT_TO_DELETE_SOCKS_CAPACITY);
             tls_shared_data_ptr_ = nullptr;
@@ -187,6 +193,10 @@ namespace fws {
             }
 
             return 0;
+        }
+
+        void SetOnEventFunc(OnEventFunc &&on_event) {
+            on_event_ = std::move(on_event);
         }
 
         template<bool enable = constants::ENABLE_FLOOP_EVENT_TIME_UPDATE, typename = std::enable_if_t<enable>>
@@ -709,6 +719,7 @@ namespace fws {
             while (!loop->to_delete_socks_.empty()) {
                 ReclaimOneSocketFromLoop(loop);
             }
+            loop->on_event_(*loop);
             return 0;
 
         } // OneStep FUnc
