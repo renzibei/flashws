@@ -14,6 +14,8 @@ target_include_directories(flashws INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/includ
 OPTION(FWS_ENABLE_FSTACK "Use f-stack, other wise system api" ON)
 OPTION(FWS_DEBUG "In Debug Mode" ON)
 OPTION(FWS_DEV_DEBUG "Debug Mode For Development" OFF)
+OPTION(FWS_FORCE_NO_EPOLL "Force not to use epoll even if f-stack is turned off" OFF)
+OPTION(FWS_FORCE_TIMEOUT_ZERO "Force timeout of FEventWait to be zero, otherwise may keeping wait" OFF)
 OPTION(FWS_USE_BORINGSSL "Use BoringSSL" OFF)
 
 if(FWS_DEBUG)
@@ -26,9 +28,21 @@ if(FWS_DEV_DEBUG)
             INTERFACE -DFWS_DEV_DEBUG)
 endif()
 
+if(FWS_FORCE_NO_EPOLL)
+    target_compile_definitions(flashws
+            INTERFACE -DFWS_FORCE_NO_EPOLL)
+endif()
+
+if(FWS_FORCE_TIMEOUT_ZERO)
+    target_compile_definitions(flashws
+            INTERFACE -DFWS_FORCE_TIMEOUT_ZERO)
+endif()
+
 MESSAGE(STATUS "FWS_ENABLE_FSTACK ${FWS_ENABLE_FSTACK}")
 MESSAGE(STATUS "FWS_DEBUG: ${FWS_DEBUG}")
 MESSAGE(STATUS "FWS_DEV_DEBUG ${FWS_DEV_DEBUG}")
+MESSAGE(STATUS "FWS_FORCE_NO_EPOLL ${FWS_FORCE_NO_EPOLL}")
+MESSAGE(STATUS "FWS_FORCE_TIMEOUT_ZERO ${FWS_FORCE_TIMEOUT_ZERO}")
 MESSAGE(STATUS "FWS_USE_BORINGSSL ${FWS_USE_BORINGSSL}")
 
 
