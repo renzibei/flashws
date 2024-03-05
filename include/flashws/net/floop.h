@@ -525,10 +525,18 @@ namespace fws {
             if FWS_UNLIKELY(loop->stop_run_flag_) {
                 PreExit(loop);
                 std::exit(0);
-                return 0;
             }
-            int n_events = fws::FEventWait(loop->fq_, nullptr, 0, loop->wait_evs_.data(),
+            int n_events = 0;
+
+            if constexpr (constants::FEVENT_WAIT_RETURN_IMMEDIATELY) {
+                timespec ts{0, 0};
+                n_events = fws::FEventWait(loop->fq_, nullptr, 0, loop->wait_evs_.data(),
+                                           MAX_MONITOR_EVENT_NUM, &ts);
+            }
+            else {
+                n_events = fws::FEventWait(loop->fq_, nullptr, 0, loop->wait_evs_.data(),
                                            MAX_MONITOR_EVENT_NUM, nullptr);
+            }
             if FWS_UNLIKELY(n_events < 0) {
                 SetErrorFormatStr("Failed to wait for events, errno: %d\n%s",
                                   errno, std::strerror(errno));

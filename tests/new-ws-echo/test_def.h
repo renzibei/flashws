@@ -11,20 +11,14 @@ namespace test {
     inline constexpr int SERVER_PORT = 58600;
 
 
-//    inline constexpr size_t MAX_DATA_LEN = 64;
-    inline constexpr size_t MAX_DATA_LEN = 1UL << 18;
+    inline constexpr size_t MAX_DATA_LEN = 64;
+//    inline constexpr size_t MAX_DATA_LEN = 1UL << 12;
 //    inline constexpr size_t MAX_DATA_LEN = 1 << 21;
 
-    inline constexpr size_t MSG_LIMIT_PER_CLIENT = 100'000;
+    inline constexpr size_t MSG_LIMIT_PER_CLIENT = 1'000'000;
     inline constexpr int REBORN_LIMIT_FOR_CLIENT = 1;
     inline constexpr size_t CON_CLIENT_NUM = 1;
     inline constexpr size_t TOTAL_MSG_CNT = MSG_LIMIT_PER_CLIENT * CON_CLIENT_NUM * REBORN_LIMIT_FOR_CLIENT;
-
-    constexpr size_t MAX_CLIENT_EVENT_NUM = 65536;
-    constexpr size_t MAX_SERVER_EVENT_NUM = 65536;
-
-    inline constexpr bool USE_BUSY_POLL = true;
-    inline constexpr int BUSY_POLL_US = 800;
 
     inline constexpr int LISTEN_BACKLOG = 128;
 

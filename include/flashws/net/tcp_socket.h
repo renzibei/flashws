@@ -342,21 +342,21 @@ namespace fws {
             if (fq_ptr_ != nullptr) {
                 DeleteFEvent(*fq_ptr_, fd_, FEVAC_READ | FEVAC_WRITE, (void*)this);
             }
-#ifdef FWS_POLL
-            for (auto& [fq_fd, fd_info_map]: detail::queue_to_fd_info_map) {
-                auto find_it = fd_info_map.find(fd_);
-                if (find_it != fd_info_map.end()) {
-                    fd_info_map.erase(find_it);
-                }
-            }
-#elif defined(FWS_EPOLL)
-            for (auto& [fq_fd, fd_info_map]: detail::queue_to_fd_info_map) {
-                auto find_it = fd_info_map.find(fd_);
-                if (find_it != fd_info_map.end()) {
-                    find_it->second.cur_evs = 0;
-                }
-            }
-#endif
+//#ifdef FWS_POLL
+//            for (auto& [fq_fd, fd_info_map]: detail::queue_to_fd_info_map) {
+//                auto find_it = fd_info_map.find(fd_);
+//                if (find_it != fd_info_map.end()) {
+//                    fd_info_map.erase(find_it);
+//                }
+//            }
+//#elif defined(FWS_EPOLL)
+//            for (auto& [fq_fd, fd_info_map]: detail::queue_to_fd_info_map) {
+//                auto find_it = fd_info_map.find(fd_);
+//                if (find_it != fd_info_map.end()) {
+//                    find_it->second.cur_evs = 0;
+//                }
+//            }
+//#endif
 
             int ret = 0;
 #ifdef FWS_ENABLE_FSTACK

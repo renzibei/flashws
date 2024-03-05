@@ -18,6 +18,19 @@ namespace fws {
         // is an event. Users can access the time by calling last_event_time_ns()
         constexpr inline bool ENABLE_FLOOP_EVENT_TIME_UPDATE = false;
 
+        // If this is enabled, even when there is no active event, the FEventWait
+        // will return immediately. This is useful for some cases like manually
+        // busy polling and check for events like timeout. However, for epoll,
+        // this may harm the latency compared to the linux system-level busy_poll.
+        // F-stack will return immediately regardless of this setting.
+        // When using POSIX poll, for maximum performance, system level busy_poll should
+        // be used with this.
+#ifdef FWS_FORCE_TIMEOUT_ZERO
+        constexpr inline bool FEVENT_WAIT_RETURN_IMMEDIATELY = true;
+#else
+        constexpr inline bool FEVENT_WAIT_RETURN_IMMEDIATELY = false;
+#endif
+
         // This takes the stack space
         constexpr inline size_t MAX_REQ_URI_LENGTH = 512;
 
