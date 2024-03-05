@@ -606,7 +606,7 @@ namespace fws {
 
     }; // class TLSSocket
 
-    static_assert(alignof(TLSSocket) == 16);
+    static_assert(alignof(TLSSocket) == alignof(std::max_align_t));
     static_assert(sizeof(TLSSocket) == 240);
 
 

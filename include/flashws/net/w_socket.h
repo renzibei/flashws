@@ -581,7 +581,7 @@ namespace fws {
                         unread_pl_len_ = payload_len;
                         last_rx_fin_flag_ = fin;
                         remain_size = data_end - data;
-                        pl_size_available = std::min(remain_size, payload_len);
+                        pl_size_available = std::min(remain_size, (size_t)payload_len);
                         if constexpr(is_server) {
                             WSMaskBytesFast(data, pl_size_available, mask_key);
                         }

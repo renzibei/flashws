@@ -429,7 +429,7 @@ namespace fws {
                 reserve_cap_[i] = RESERVE_NUM[i];
                 has_alloc_num_[i] = 0;
             }
-
+            (void)reserveTotalBytes;
 
         }
     }; // class MemPool

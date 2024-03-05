@@ -574,8 +574,8 @@ namespace fws {
 
     };
 
-    static_assert(sizeof(TCPSocket) == 128);
-    static_assert(alignof(TCPSocket) == 16);
+    static_assert(sizeof(TCPSocket) <= 128);
+    static_assert(alignof(TCPSocket) == alignof(std::max_align_t));
 
 
 } // namespace fws
