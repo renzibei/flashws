@@ -38,6 +38,8 @@ namespace fws {
         using WSPlainClientAllocTraits = std::allocator_traits<WSPlainClientAlloc>;
 
         bool stop_run_flag_{};
+        // Can only be set in PreExit
+        bool clean_up_flag_{};
         int64_t last_event_time_ns_{};
 
         using OnEventFunc = stdext::inplace_function<void(FLoop&)>;
@@ -118,6 +120,7 @@ namespace fws {
         FLoop(FLoop &&o) noexcept:
             fq_(std::move(o.fq_)),
             stop_run_flag_(o.stop_run_flag_),
+            clean_up_flag_(o.clean_up_flag_),
             last_event_time_ns_(o.last_event_time_ns_),
             on_event_(std::move(o.on_event_)),
             wait_evs_(std::move(o.wait_evs_)),
@@ -131,6 +134,7 @@ namespace fws {
         FLoop& operator=(FLoop &&o) noexcept {
             std::swap(fq_, o.fq_);
             std::swap(stop_run_flag_, o.stop_run_flag_);
+            std::swap(clean_up_flag_, o.clean_up_flag_);
             std::swap(last_event_time_ns_, o.last_event_time_ns_);
             std::swap(on_event_, o.on_event_),
             std::swap(wait_evs_, o.wait_evs_);
@@ -174,6 +178,7 @@ namespace fws {
                 return -1;
             }
             stop_run_flag_ = true;
+            clean_up_flag_ = true;
             last_event_time_ns_ = GetNowNsFromEpoch();
             on_event_ = [](FLoop&){};
             wait_evs_ = {MAX_MONITOR_EVENT_NUM, FEvent{}};
@@ -324,7 +329,8 @@ namespace fws {
             ff_run(OneStep, this);
 #else
             stop_run_flag_ = false;
-            while (true) {
+            clean_up_flag_ = false;
+            while (!clean_up_flag_) {
                 OneStep(this);
             }
 
@@ -523,6 +529,7 @@ namespace fws {
             while (!loop->to_delete_socks_.empty()) {
                 ReclaimOneSocketFromLoop(loop);
             }
+            loop->clean_up_flag_ = true;
         }
 
         static int OneStep(void *this_ptr) {
@@ -534,7 +541,8 @@ namespace fws {
 
             if FWS_UNLIKELY(loop->stop_run_flag_) {
                 PreExit(loop);
-                std::exit(0);
+                // clean_up_flag_ is set in PreExit, will stop the loop
+                return 0;
             }
             int n_events = 0;
 
