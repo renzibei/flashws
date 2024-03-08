@@ -71,6 +71,11 @@ namespace fws {
 
         static_assert(SUGGEST_RESERVE_WS_HDR_SIZE <= DEFAULT_READ_BUF_PRE_PADDING_SIZE);
 
+        constexpr inline size_t HTTP_REQUEST_RESERVE_HDR_SIZE = 512;
+        static_assert(HTTP_REQUEST_RESERVE_HDR_SIZE < MAX_READABLE_SIZE_ONE_TIME);
+
+        constexpr inline size_t HTTP_MAX_RECV_BUF_SIZE = 1UL << 23;
+
         // Defined in RFC doc
         constexpr inline const char SEC_WS_VERSION[] = "13";
 
