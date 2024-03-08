@@ -333,7 +333,7 @@ namespace fws {
                 if (alloc_cnt_[i] > 0) {
                     totalSum += alloc_cnt_[i] * SIZE_OF_TYPE[i];
                     peakSum += peak_cnt_[i] * SIZE_OF_TYPE[i];
-                    printf("ItemAllocator for %" PRIu64 "\tbytes buckets, alloc %" PRIu64 "\tcount,"
+                    printf("ItemAllocator for %zu\tbytes buckets, alloc %" PRIu64 "\tcount,"
                           "%" PRId64 "\tbytes in total; Peak %" PRId64 "\tcount, %" PRId64 "\tbytes\n",
                            SIZE_OF_TYPE[i], alloc_cnt_[i], alloc_cnt_[i] * SIZE_OF_TYPE[i], peak_cnt_[i],
                            peak_cnt_[i] * SIZE_OF_TYPE[i]);
