@@ -88,7 +88,7 @@ namespace fws {
                 if FWS_UNLIKELY(total_possible_conn >= max_conn_cnt_) {
                     // Requests will be added to the queue and postponed until a connection is available
 #ifdef FWS_DEBUG
-                    fprintf(stderr, "HTTPClientPool cur connection size reach max_conn_cnt %zu",
+                    fprintf(stderr, "HTTPClientPool cur connection size reach max_conn_cnt %zu\n",
                                       max_conn_cnt_);
 #endif
                 }
@@ -312,18 +312,21 @@ namespace fws {
                 // from the `busy_client_map_` and add http to the `idle_client_pool_`.
                 // The user may send the requests directly using the http client
                 // we passed in the on_recv_msg callback.
-                if (!this_ptr->request_to_add_.empty()) {
-                    this_ptr->PatchRequestToClient(http);
-                }
-                else {
-                    // If the user sends the requests using the http client we
-                    // passed in the on_recv_msg callback, we need to check if
-                    // the http client is idle, and if it is, we need to add it
-                    if (http.is_idle()) {
+
+                // If the user sends the requests using the http client we
+                // passed in the on_recv_msg callback, we need to check if
+                // the http client is idle.
+                if (http.is_idle()) {
+                    if (!this_ptr->request_to_add_.empty()) {
+                        this_ptr->PatchRequestToClient(http);
+                    }
+                    else {
                         this_ptr->idle_client_pool_.emplace(&http);
                         this_ptr->busy_client_map_.erase(find_it);
                     }
                 }
+
+
 
 
             });
