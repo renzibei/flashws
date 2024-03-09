@@ -10,6 +10,7 @@ namespace test {
 
     struct Context {
         size_t send_cnt = 0;
+        size_t recv_cnt = 0;
         size_t conn_cnt = 0;
         fws::FLoop<> *loop_ptr = nullptr;
         fws::HTTPClientPool<true> *http_pool_ptr = nullptr;
@@ -44,11 +45,11 @@ namespace test {
 //        constexpr static std::string_view IP_STR = "104.16.124.96"; // cloudflare
         constexpr static int PORT = 443;
 //        fws::HTTPClient<true, Context> *http_client_ptr = nullptr;
-        constexpr size_t REQUEST_COUNT = 9;
-        constexpr size_t KEEP_CONN_CNT = 10;
-        constexpr size_t MAX_CONN_CNT = 10;
+        constexpr size_t REQUEST_COUNT = 10;
+        constexpr size_t KEEP_CONN_CNT = 3;
+        constexpr size_t MAX_CONN_CNT = 5;
 
-        constexpr size_t TEST_TARGET_CONN_CNT_SAME_TIME = 3;
+        constexpr size_t TEST_TARGET_CONN_CNT_SAME_TIME = 6;
         constexpr int64_t NS_PER_SEC = 1'000'000'000LL;
 
         constexpr int64_t WAIT_TO_SEND_NS = 1LL * NS_PER_SEC;
@@ -59,7 +60,7 @@ namespace test {
             printf("Error in init http pool, %s\n", fws::GetErrorStrP());
             return -1;
         }
-        Context ctx{0, 0, &loop, &http_pool, 0, 0};
+        Context ctx{0, 0, 0, &loop, &http_pool, 0, 0};
         ctx.start_ns = fws::GetNowNsFromEpoch();
         {
 
@@ -69,7 +70,7 @@ namespace test {
                 fwrite(buf.data + buf.start_pos, 1, buf.size, stdout);
                 constexpr char ENDLINE = '\n';
                 fwrite(&ENDLINE, 1, 1, stdout);
-
+                ++ctx.recv_cnt;
                 auto [hdr_arr, hdr_cnt] = http.headers();
                 for (size_t i = 0; i < hdr_cnt; ++i) {
                     printf("%s: %s\n", std::string(hdr_arr[i].key).c_str(),
@@ -85,15 +86,15 @@ namespace test {
                     return;
                 }
                 ++ctx.send_cnt;
-                if (ctx.http_pool_ptr->template SendRequest<fws::HTTP_GET_OP>(PATH, ctx.on_recv_msg, ctx.on_error) < 0) {
-                    printf("Error in send request, %s\n", fws::GetErrorStrP());
+//                if (ctx.http_pool_ptr->template SendRequest<fws::HTTP_GET_OP>(PATH, ctx.on_recv_msg, ctx.on_error) < 0) {
+//                    printf("Error in send request, %s\n", fws::GetErrorStrP());
+//                    ctx.loop_ptr->StopRun();
+//                }
+
+                if (http.SendRequest<fws::HTTP_GET_OP>(PATH) < 0) {
+                    printf("Error in second send request, %s\n", fws::GetErrorStrP());
                     ctx.loop_ptr->StopRun();
                 }
-
-//                if (http.SendRequest<fws::HTTP_GET_OP>(PATH) < 0) {
-//                    printf("Error in second send request, %s\n", fws::GetErrorStrP());
-//                    std::exit(-1);
-//                }
             };
 
             auto on_error = [](fws::HTTPClientPool<true>::ClientType &http, std::string_view reason) {
@@ -117,7 +118,7 @@ namespace test {
                     ++ctx.conn_cnt;
                 }
             }
-            if (ctx.send_cnt >= REQUEST_COUNT && ctx.end_ns != 0) {
+            if (ctx.recv_cnt >= REQUEST_COUNT && ctx.end_ns != 0) {
                 int64_t now_ns = fws::GetNowNsFromEpoch();
                 if (now_ns - ctx.end_ns > PRE_EXIT_WAIT_NS) {
                     ctx.loop_ptr->StopRun();

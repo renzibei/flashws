@@ -249,9 +249,9 @@ namespace fws {
             }
             send_buf_.size = data - data_start;
             // TODO: delete debug info
-//#ifdef FWS_DEV_DEBUG
+#ifdef FWS_DEV_DEBUG
             printf("Request size: %zu\n%s\n", send_buf_.size, send_buf_.data + send_buf_.start_pos);
-//#endif
+#endif
             FWS_ASSERT(sock_ptr_->is_open());
             SendBufferedReq();
 
