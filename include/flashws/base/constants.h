@@ -16,7 +16,7 @@ namespace fws {
 
         // If this is enabled, the FLoop will update the time every time there
         // is an event. Users can access the time by calling last_event_time_ns()
-        constexpr inline bool ENABLE_FLOOP_EVENT_TIME_UPDATE = false;
+        constexpr inline bool ENABLE_FLOOP_EVENT_TIME_UPDATE = true;
 
         // If this is enabled, even when there is no active event, the FEventWait
         // will return immediately. This is useful for some cases like manually

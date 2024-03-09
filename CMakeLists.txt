@@ -62,6 +62,9 @@ endif()
 
 if (FWS_USE_BORINGSSL AND NOT FWS_ENABLE_FSTACK)
     add_subdirectory(thirdparty/boringssl)
+    target_compile_definitions(flashws
+            INTERFACE
+            -DFWS_USE_BORINGSSL)
     target_link_libraries(
             flashws
             INTERFACE
@@ -75,6 +78,10 @@ else()
             INTERFACE
             OpenSSL::SSL
             OpenSSL::Crypto
+    )
+    target_compile_options(flashws
+            INTERFACE
+            -Wno-deprecated-declarations
     )
 endif()
 

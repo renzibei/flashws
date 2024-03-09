@@ -10,6 +10,8 @@ namespace fws {
     enum HTTPOpType : int32_t {
         HTTP_GET_OP  = 1,
         HTTP_POST_OP = 2,
+        HTTP_PUT_OP  = 3,
+        HTTP_DELETE_OP = 4,
     };
 
     template<bool enable_tls, typename UserData=HTTPUnspecified>
@@ -84,6 +86,10 @@ namespace fws {
         }
 
         bool ready_to_send() const {
+            return stage_ == STAGE_IDLE;
+        }
+
+        bool is_idle() const {
             return stage_ == STAGE_IDLE;
         }
 
@@ -175,7 +181,7 @@ namespace fws {
             uint8_t* FWS_RESTRICT const data_start = data;
 //            constexpr char SP = ' ';
             constexpr char CRLF[2] = {'\r', '\n'};
-            static_assert(op_type == HTTP_GET_OP || op_type == HTTP_POST_OP, "Invalid op_type");
+            static_assert(op_type == HTTP_GET_OP || op_type == HTTP_POST_OP || op_type == HTTP_PUT_OP || op_type == HTTP_DELETE_OP, "Invalid op_type");
             if constexpr (op_type == HTTP_GET_OP) {
                 memcpy(data, "GET ", 4);
                 data += 4;
@@ -183,6 +189,14 @@ namespace fws {
             else if constexpr (op_type == HTTP_POST_OP) {
                 memcpy(data, "POST ", 5);
                 data += 5;
+            }
+            else if constexpr (op_type == HTTP_PUT_OP) {
+                memcpy(data, "PUT ", 4);
+                data += 4;
+            }
+            else if constexpr (op_type == HTTP_DELETE_OP) {
+                memcpy(data, "DELETE ", 7);
+                data += 7;
             }
             memcpy(data, path.data(), path.size());
             data += path.size();
@@ -234,7 +248,10 @@ namespace fws {
                 }
             }
             send_buf_.size = data - data_start;
+            // TODO: delete debug info
+//#ifdef FWS_DEV_DEBUG
             printf("Request size: %zu\n%s\n", send_buf_.size, send_buf_.data + send_buf_.start_pos);
+//#endif
             FWS_ASSERT(sock_ptr_->is_open());
             SendBufferedReq();
 
@@ -271,7 +288,7 @@ namespace fws {
         UnderSocket *sock_ptr_ = nullptr; // do not have ownership
         static constexpr size_t MAX_HOST_BUF_LEN = 128;
         static constexpr size_t MAX_IP_BUF_LEN = 16;
-        static constexpr size_t MAX_HEADER_NUM = 32;
+        static constexpr size_t MAX_HEADER_NUM = 48;
         static constexpr size_t MAX_CHUNKED_SIZE_BUF_LEN = 10;
         size_t host_len_, ip_len_;
 
@@ -581,10 +598,10 @@ namespace fws {
                 recv_buf_.size += buf.size;
                 on_recv_part_(*this, last_resp_status_code_, next_recv_size_ == 0, std::move(buf), user_data_);
                 if (next_recv_size_ == 0) {
+                    CleanWhenMsgEnd();
                     if (recv_msg_registered_) {
                         on_recv_msg_(*this, last_resp_status_code_, std::move(recv_buf_), user_data_);
                     }
-                    stage_ = STAGE_IDLE;
                 }
             }
 
