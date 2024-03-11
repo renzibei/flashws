@@ -119,16 +119,19 @@ namespace fws {
             if FWS_LIKELY(fd_ != INVALID_FD) {
                 if (nonblock) {
                     if FWS_UNLIKELY(SetNonBlock() < 0) {
+                        SetErrorFormatStr("Failed to set nonblock! %s\n", strerror(errno));
                         return -1;
                     }
                 }
                 if (no_delay) {
                     if FWS_UNLIKELY(SetNoDelay() < 0) {
+                        SetErrorFormatStr("Failed to set no delay! %s\n", strerror(errno));
                         return -2;
                     }
                 }
                 if (busy_poll) {
                     if FWS_UNLIKELY(SetBusyPoll(poll_us) < 0) {
+                        SetErrorFormatStr("Failed to set busy poll! %s\n", strerror(errno));
                         return -3;
                     }
                 }
@@ -145,6 +148,10 @@ namespace fws {
 #else
             int fd = socket(AF_INET, SOCK_STREAM, 0);
 #endif
+            if FWS_UNLIKELY(fd < 0) {
+                SetErrorFormatStr("Fd is negative when create tcp socket, %s\n", strerror(errno));
+                return fd;
+            }
             return this->Init(fd, false, INIT_SOCKET_STATUS, nullptr, nonblock, no_delay, busy_poll, poll_us);
         }
 

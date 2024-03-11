@@ -205,7 +205,7 @@ namespace fws {
         }
 
         template<bool enable = constants::ENABLE_FLOOP_EVENT_TIME_UPDATE, typename = std::enable_if_t<enable>>
-        int64_t last_event_time_ns() const {
+        [[nodiscard]] int64_t last_event_time_ns() const {
             return last_event_time_ns_;
         }
 
@@ -562,8 +562,11 @@ namespace fws {
             if FWS_UNLIKELY(n_events < 0) {
                 SetErrorFormatStr("Failed to wait for events, errno: %d\n%s",
                                   errno, std::strerror(errno));
-                fprintf(stderr, "%s", GetErrorStrP());
-                std::abort();
+                fprintf(stderr, "%s\n", GetErrorStrP());
+                if (errno != EINTR) {
+                    std::abort();
+                }
+//
             }
             for (int k = 0; k < n_events; ++k) {
                 auto &FWS_RESTRICT event = loop->wait_evs_[k];

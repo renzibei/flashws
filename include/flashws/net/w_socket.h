@@ -714,8 +714,16 @@ namespace fws {
                 if FWS_LIKELY(!is_rx_control_frame_ | (opcode == WS_OPCODE_PONG)) {
                     IOBuffer temp_io_buf{};
                     if FWS_LIKELY(!is_rx_control_frame_) {
-                        temp_io_buf = IOBuffer(io_buf.data, pl_size_available, (data - io_buf.data),
-                                                io_buf.capacity);
+                        size_t temp_start_pos = data - io_buf.data;
+                        // If this is the last part in the recv buffer, we can
+                        // provide larger capacity for the user to use. Otherwise,
+                        // the user should not touch any data after the frame.
+                        size_t temp_cap = pl_size_available + temp_start_pos;
+                        if (data + pl_size_available == data_end) {
+                            temp_cap = io_buf.capacity;
+                        }
+                        temp_io_buf = IOBuffer(io_buf.data, pl_size_available, temp_start_pos,
+                                               temp_cap);
 
                     }
                     else {

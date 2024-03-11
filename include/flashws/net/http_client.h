@@ -250,7 +250,9 @@ namespace fws {
             send_buf_.size = data - data_start;
             // TODO: delete debug info
 #ifdef FWS_DEV_DEBUG
-            printf("Request size: %zu\n%s\n", send_buf_.size, send_buf_.data + send_buf_.start_pos);
+            printf("Request size: %zu\n", send_buf_.size);
+            fwrite(send_buf_.data + send_buf_.start_pos, 1, send_buf_.size, stdout);
+            printf("\n");
 #endif
             FWS_ASSERT(sock_ptr_->is_open());
             SendBufferedReq();
@@ -560,13 +562,14 @@ namespace fws {
             else {
                 IOBuffer temp_buf{};
                 if (buf.size > (ssize_t)next_recv_size_) {
-                    temp_buf = IOBuffer{buf.data, ssize_t(next_recv_size_ - 2), buf.start_pos, next_recv_size_ - 2};\
+                    size_t temp_buf_size = next_recv_size_ - 2;
+                    temp_buf = IOBuffer{buf.data, ssize_t(temp_buf_size), buf.start_pos, temp_buf_size + buf.start_pos};
                     buf.start_pos += next_recv_size_;
                     buf.size -= next_recv_size_;
                     next_recv_size_ = 0;
                 }
                 else {
-                    temp_buf = IOBuffer{buf.data, buf.size, buf.start_pos, (size_t)buf.size};
+                    temp_buf = IOBuffer{buf.data, buf.size, buf.start_pos, (size_t)buf.size + buf.start_pos};
                     buf.start_pos += buf.size;
                     buf.size = 0;
                     next_recv_size_ -= temp_buf.size;
@@ -640,7 +643,9 @@ namespace fws {
             }
             --lf;
             if FWS_UNLIKELY(!(status_code >= 200 && status_code <= 206)) {
-                on_error_(*this, std::string_view(status_str_start, lf - status_str_start), user_data_);
+//                on_error_(*this, std::string_view(status_str_start, lf - status_str_start), user_data_);
+                std::string part_body = std::string(data_end, (char*)recv_buf_.data + recv_buf_.start_pos + recv_buf_.size - data_end);
+                on_error_(*this, std::string_view(std::string(status_str_start, lf - status_str_start) + "\n" + part_body), user_data_);
                 return -5;
             }
             data = lf + 2;
