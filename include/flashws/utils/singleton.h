@@ -1,19 +1,25 @@
 #pragma once
 
-template<class T>
-class Singleton {
-public:
+namespace fws {
 
-    Singleton(const Singleton &other) = delete;
-    Singleton& operator=(const Singleton &other) = delete;
+    template<class T>
+    class Singleton {
+    public:
 
-    static T& instance() {
-        static T _instance;
-        return _instance;
-    }
+        Singleton(const Singleton &other) = delete;
 
-protected:
-    Singleton() = default;
-    ~Singleton() = default;
+        Singleton &operator=(const Singleton &other) = delete;
 
-};
+        static T &instance() {
+            static T _instance;
+            return _instance;
+        }
+
+    protected:
+        Singleton() = default;
+
+        ~Singleton() = default;
+
+    };
+
+} // namespace fws

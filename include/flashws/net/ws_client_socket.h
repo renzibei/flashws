@@ -94,7 +94,8 @@ namespace fws {
                                                    busy_poll, busy_poll_us);
             }
             if FWS_UNLIKELY(tcp_init_ret < 0) {
-                SetErrorFormatStr("Failed to create tcp socket, %s", std::strerror(errno));
+                std::string ori_err_str = GetErrorString();
+                SetErrorFormatStr("Failed to create underlying socket in ws client, %s\n", ori_err_str.c_str());
                 return tcp_init_ret;
             }
             int ret = InitWSPart();
