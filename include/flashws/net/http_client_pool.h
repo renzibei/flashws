@@ -118,7 +118,7 @@ namespace fws {
             busy_client_map_.emplace(client, ClientInfo{std::move(on_recv_msg), std::move(on_error)});
             int send_ret = client->template SendRequest<op_type>(path, query_params, body, body_size, headers);
             if FWS_UNLIKELY(send_ret < 0) {
-                SetErrorFormatStr("HTTPClientPool SendRequest failed, %s", GetErrorStrP());
+                SetErrorFormatStr("HTTPClientPool SendRequest failed, %s", GetErrorString().c_str());
                 return -1;
             }
             return 0;
