@@ -434,13 +434,15 @@ namespace fws {
                 // TODO: Here we set hostname as nullptr. It should be find because
                 // this is a new server socket. Only client socket sets sni now
                 if FWS_UNLIKELY(tls_sock.InitSSLPart(true, nullptr) < 0) {
-                    SetErrorFormatStr("Failed to init SSL part for new socket %d when accepting, %s\n", fd, GetErrorStrV());
+                    SetErrorFormatStr("Failed to init SSL part for new socket %d when accepting, %s\n",
+                                      fd, GetErrorString().c_str());
                     return -5;
                 }
                 if (type == SOCKET_TYPE_TLS_WS) {
                     WSServerSocket<true> ws_sock{std::move(tls_sock)};
                     if FWS_UNLIKELY(ws_sock.InitWSPart() < 0) {
-                        SetErrorFormatStr("Failed to init WS part for new socket %d when accepting, %s\n", fd, GetErrorStrV());
+                        SetErrorFormatStr("Failed to init WS part for new socket %d when accepting, %s\n",
+                                          fd, GetErrorString().c_str());
                         return -6;
                     }
                     std::tie(copy_callbacks_and_add_sock_ret, new_sock_ptr) = CopyCallbacksAndAddSocket<WSServerSocket<true>, true>(std::move(ws_sock), sock_ptr, user_data_size);
@@ -453,7 +455,8 @@ namespace fws {
                 if (type == SOCKET_TYPE_PLAIN_WS) {
                     WSServerSocket<false> ws_sock{std::move(new_sock)};
                     if FWS_UNLIKELY(ws_sock.InitWSPart() < 0) {
-                        SetErrorFormatStr("Failed to init WS part for new socket %d when accepting, %s\n", fd, GetErrorStrV());
+                        SetErrorFormatStr("Failed to init WS part for new socket %d when accepting, %s\n",
+                                          fd, GetErrorString().c_str());
                         return -7;
                     }
                     std::tie(copy_callbacks_and_add_sock_ret, new_sock_ptr) = CopyCallbacksAndAddSocket<WSServerSocket<false>, true>(std::move(ws_sock), sock_ptr, user_data_size);

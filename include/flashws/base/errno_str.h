@@ -31,10 +31,12 @@ namespace fws {
         va_end(arg_list);
     }
 #else
-    template<class... Args>
-    inline FWS_NOINLINE void SetErrorFormatStr(const char* FWS_RESTRICT format, Args... args)  {
-        snprintf(detail::error_buf, sizeof(detail::error_buf), format, std::forward<Args>(args)...);
-    }
+//    template<class... Args>
+//    inline FWS_NOINLINE void SetErrorFormatStr(const char* FWS_RESTRICT format, Args... args)  {
+//        snprintf(detail::error_buf, sizeof(detail::error_buf), format, std::forward<Args>(args)...);
+//    }
+    #define  SetErrorFormatStr(format, ...) \
+    snprintf(detail::error_buf, sizeof(detail::error_buf), format, ##__VA_ARGS__)
 #endif
 
     inline std::string_view GetErrorStrV() {

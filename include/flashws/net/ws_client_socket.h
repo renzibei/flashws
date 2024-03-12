@@ -547,7 +547,7 @@ namespace fws {
             if FWS_UNLIKELY(write_ret < 0) {
                 if (errno != EAGAIN) {
                     client_status_ = CLOSED_STATUS;
-                    SetErrorFormatStr("Failed to send request via socket, write return %d",
+                    SetErrorFormatStr("Failed to send request via socket, write return %zd",
                                       write_ret);
                     return -1;
                 }

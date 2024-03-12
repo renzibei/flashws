@@ -15,9 +15,9 @@ namespace test {
 //    inline constexpr size_t MAX_DATA_LEN = 1UL << 12;
 //    inline constexpr size_t MAX_DATA_LEN = 1 << 21;
 
-    inline constexpr size_t MSG_LIMIT_PER_CLIENT = 1'000'000;
+    inline constexpr size_t MSG_LIMIT_PER_CLIENT = 300'000;
     inline constexpr int REBORN_LIMIT_FOR_CLIENT = 1;
-    inline constexpr size_t CON_CLIENT_NUM = 1;
+    inline constexpr size_t CON_CLIENT_NUM = 4;
     inline constexpr size_t TOTAL_MSG_CNT = MSG_LIMIT_PER_CLIENT * CON_CLIENT_NUM * REBORN_LIMIT_FOR_CLIENT;
 
     inline constexpr int LISTEN_BACKLOG = 128;

@@ -491,9 +491,9 @@ namespace fws {
                 data += 8;
             }
             if FWS_UNLIKELY(payload_len > constants::MAX_WS_FRAME_SIZE) {
-                SetErrorFormatStr("payload length %zu larger than"
+                SetErrorFormatStr("payload length larger than"
                                   "constants::MAX_WS_FRAME_SIZE %zu",
-                                  payload_len, constants::MAX_WS_FRAME_SIZE);
+                                  constants::MAX_WS_FRAME_SIZE);
                 return -2;
             }
 
