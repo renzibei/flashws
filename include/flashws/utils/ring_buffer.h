@@ -90,7 +90,8 @@ namespace frb {
         static_assert(RoundUpLog2(30) == 5);
     } // namespace detail
 
-
+    template<class T, class Allocator>
+    class RingBuffer;
 
     template<class T>
     class BidirectionalIterator {
@@ -149,6 +150,9 @@ namespace frb {
         T *buf_;
         std::size_t pos_;
         std::size_t mask_;
+
+        template<class U, class A>
+        friend class RingBuffer;
     }; // class ForwardIterator
 
 
@@ -364,6 +368,42 @@ namespace frb {
 //            --size_;
         }
 
+        iterator erase(iterator pos) {
+
+            auto idx = pos.pos_; // Assuming pos_ gives the actual index in the buffer
+            auto mask = mask_;
+            auto head = head_;
+            auto tail = tail_;
+            size_type distance_to_head = (idx - head + mask + 1) & mask;
+            size_type distance_to_tail = (tail - idx + mask) & mask;
+
+            if (distance_to_head < distance_to_tail) {
+                // Move elements from head to idx toward idx
+                for (size_type i = idx; i != head;) {
+                    size_type next_i = (i + mask) & mask; // similar to --i
+                    buf_[i] = std::move(buf_[next_i]);
+                    i = next_i;
+                }
+                AllocTraits::destroy(*this, buf_ + head);
+                head = (head + 1) & mask;
+                idx = (idx + 1) & mask;
+            } else {
+                // Move elements from idx to tail toward idx
+                auto back_pos = (tail + mask) & mask;
+                for (size_type i = idx; i != back_pos;) {
+                    size_type next_i = (i + 1) & mask; // similar to ++i
+                    buf_[i] = std::move(buf_[next_i]);
+                    i = next_i;
+                }
+                tail = (tail + mask) & mask; // This decrements tail
+                AllocTraits::destroy(*this, buf_ + back_pos);
+            }
+            head_ = head;
+            tail_ = tail;
+            return iterator(buf_, idx, mask);
+
+        }
+
 
         iterator begin() noexcept {
             return iterator(buf_, head_, mask_);
@@ -379,6 +419,22 @@ namespace frb {
 
         const_iterator end() const noexcept {
             return const_iterator(buf_, tail_, mask_);
+        }
+
+        reverse_iterator rbegin() noexcept {
+            return std::make_reverse_iterator(end());
+        }
+
+        const_reverse_iterator rbegin() const noexcept {
+            return std::make_reverse_iterator(end());
+        }
+
+        reverse_iterator rend() noexcept {
+            return std::make_reverse_iterator(begin());
+        }
+
+        const_reverse_iterator rend() const noexcept {
+            return std::make_reverse_iterator(begin());
         }
 
         FRB_ALWAYS_INLINE bool empty() const noexcept {
