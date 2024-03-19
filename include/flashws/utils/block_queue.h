@@ -209,6 +209,12 @@ namespace fws {
             }
         }
 
+        void reserve(size_t count) {
+            size_t original_cnt = item_size_;
+            resize(count);
+            resize(original_cnt);
+        }
+
         ~BlockQueue() {
             if constexpr (std::is_class_v<ItemType>) {
                 for (size_t i = 0; i < item_size_; ++i) {
