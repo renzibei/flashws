@@ -6,21 +6,11 @@ set(CMAKE_CXX_STANDARD 17)
 add_executable(test_ws_client test_ws_client.cpp)
 add_executable(test_ws_server test_ws_server.cpp)
 
-OPTION(USE_RAW_HISTOGRAM "Use raw_histogram, otherwise use HdrHistogram_c" OFF)
-
-if(USE_RAW_HISTOGRAM)
-    ADD_DEFINITIONS(-DUSE_RAW_HISTOGRAM)
-    SET(HDR_HIST_LIB "")
-else()
-    add_subdirectory(../../thirdparty/HdrHistogram_c ${CMAKE_CURRENT_BINARY_DIR}/HdrHistogram_c)
-    SET(HDR_HIST_LIB hdr_histogram_static)
-endif()
-
 target_link_libraries(test_ws_client
         PRIVATE ${HDR_HIST_LIB}
         )
 
-add_subdirectory(../.. ${CMAKE_CURRENT_BINARY_DIR}/flashws)
+#add_subdirectory(../.. ${CMAKE_CURRENT_BINARY_DIR}/flashws)
 
 
 target_link_libraries(test_ws_client PRIVATE fws::flashws)

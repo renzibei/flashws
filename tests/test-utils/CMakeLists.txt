@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 add_executable(test_utils test_utils.cpp)
 add_executable(test_mask test_mask.cpp)
 
-add_subdirectory(../.. ${CMAKE_CURRENT_BINARY_DIR}/flashws)
+#add_subdirectory(../.. ${CMAKE_CURRENT_BINARY_DIR}/flashws)
 #add_subdirectory(../../thirdparty/Compile-time-hash-functions ${CMAKE_CURRENT_BINARY_DIR}/compile_time_hash_functions)
 target_link_libraries(test_utils PRIVATE
         fws::flashws
