@@ -321,6 +321,9 @@ namespace fws {
 
         void StopRun() {
             stop_run_flag_ = true;
+#ifdef FWS_ENABLE_FSTACK
+            ff_stop_run();
+#endif
         }
 
         bool is_running() const {

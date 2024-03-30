@@ -44,9 +44,8 @@ Then you can compile the tests and examples.
 
 ```
 cd tests
-cd ws-echo
 mkdir build
-cmake ..
+cmake .. [-DFWS_ENABLE_FSTACK=OFF/ON]
 make -j6
 ```
 

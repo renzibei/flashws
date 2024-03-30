@@ -45,6 +45,7 @@ namespace test {
         size_t data_hash = 0;
         uint64_t loop_cnt = 0;
         int64_t start_ns_from_epoch = 0;
+        int64_t total_round_trip_ns = 0;
 
         template<typename Sock>
         static int InitClient(Sock& sock) {
@@ -121,7 +122,7 @@ namespace test {
                     int64_t round_trip_ns = std::llround(pass_tick * this->cpu_timer.ns_per_tick());
                     this->rtt_hist.AddValue(round_trip_ns);
                     ++this->rx_msg_cnt;
-
+                    this->total_round_trip_ns += round_trip_ns;
                     auto client_msg_cnt = ++client_ctx->msg_cnt;
                     bool this_client_finish_all_connection = false;
                     bool is_new_born_client = false;
@@ -172,8 +173,8 @@ namespace test {
                     if FWS_UNLIKELY(this_client_finish_all_connection) {
                         return ;
                     }
-                    if FWS_UNLIKELY(!(this->loop_cnt & 0xfffUL)) {
-                        double round_trip_us = double(round_trip_ns) / 1000.0;
+                    if FWS_UNLIKELY(!(this->loop_cnt & 0x3fffUL)) {
+                        double round_trip_us = double(total_round_trip_ns) / rx_msg_cnt / 1000.0;
                         constexpr int64_t BITS_PER_BYTE = 8;
                         auto now_ns_from_epoch = std::chrono::high_resolution_clock::now().time_since_epoch().count();
                         auto to_now_ns = now_ns_from_epoch - this->start_ns_from_epoch;
