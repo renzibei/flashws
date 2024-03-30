@@ -321,9 +321,6 @@ namespace fws {
 
         void StopRun() {
             stop_run_flag_ = true;
-#ifdef FWS_ENABLE_FSTACK
-            ff_stop_run();
-#endif
         }
 
         bool is_running() const {
@@ -331,12 +328,11 @@ namespace fws {
         }
 
         void Run() {
-#ifdef FWS_ENABLE_FSTACK
-            stop_run_flag_ = false;
-            ff_run(OneStep, this);
-#else
             stop_run_flag_ = false;
             clean_up_flag_ = false;
+#ifdef FWS_ENABLE_FSTACK
+            ff_run(OneStep, this);
+#else
             while (!clean_up_flag_) {
                 OneStep(this);
             }
@@ -540,6 +536,9 @@ namespace fws {
                 ReclaimOneSocketFromLoop(loop);
             }
             loop->clean_up_flag_ = true;
+#ifdef FWS_ENABLE_FSTACK
+            ff_stop_run();
+#endif
         }
 
         static int OneStep(void *this_ptr) {
