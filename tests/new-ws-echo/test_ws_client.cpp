@@ -37,6 +37,7 @@ namespace test {
 
         int64_t start_ns_from_epoch = 0;
         int64_t last_record_ns = 0;
+        int64_t total_rtt_ns = 0;
         bool wait_shutdown = false;
 
         std::string server_ip;
@@ -208,6 +209,7 @@ namespace test {
                         auto read_end_tick = cpu_timer.Stop();
                         auto pass_tick = read_end_tick - client_ctx.start_write_tick;
                         int64_t round_trip_ns = std::llround(pass_tick * cpu_timer.ns_per_tick());
+                        total_rtt_ns += round_trip_ns;
                         rtt_hist.AddValue(round_trip_ns);
 
 //                        size_t recv_hash = HashArr(temp_buf_->data + temp_buf_->start_pos, temp_buf_->size);
@@ -258,7 +260,8 @@ namespace test {
                         if FWS_UNLIKELY(!(loop_cnt & 0x3fffUL)) {
                             size_t temp_hash = HashArr(temp_buf_->data + temp_buf_->start_pos, temp_buf_->size);
 //                        size_t temp_hash = HashBufArr(buf_deque.begin(), buf_deque.end());
-                            double round_trip_us = double(round_trip_ns) / 1000.0;
+//                            double round_trip_us = double(round_trip_ns) / 1000.0;
+                            double avg_round_trip_us = double(total_rtt_ns) / (loop_cnt * 1000.0);
                             constexpr int64_t BITS_PER_BYTE = 8;
                             auto now_ns_from_epoch = std::chrono::high_resolution_clock::now().time_since_epoch().count();
                             last_record_ns = now_ns_from_epoch;
@@ -274,7 +277,7 @@ namespace test {
                             }
                             printf("Avg round trip latency: %.3lf us, throughput "
                                    "rx + tx: %.2lf Mbit/s, hash value: %zu, active fd cnt: %zu\n",
-                                   round_trip_us, avg_recv_throughput_mbps +
+                                   avg_round_trip_us, avg_recv_throughput_mbps +
                                                   avg_send_throughput_mbps,temp_hash,
                                    loop.socket_count());
                         }

@@ -2,8 +2,8 @@
 
 //#define SERVER_PORT     58600
 #define SERVER_PORT 58600
-#define MAX_DATA_LEN    (1 << 18)
-//#define MAX_DATA_LEN 64
+//#define MAX_DATA_LEN    (1 << 18)
+#define MAX_DATA_LEN 64
 
 //#define TEST_TIMES      1'00'000
 
@@ -30,17 +30,17 @@ namespace test {
 //inline constexpr const char* const SERVER_IP = "10.5.96.3";
 
 
-    inline constexpr const char *SERVER_IP = "10.5.96.7";
+    inline constexpr const char *SERVER_IP = "172.31.48.241";
 
     inline constexpr bool ENABLE_TLS = true;
     inline constexpr bool SHOULD_VERIFY_CERT = true;
     inline constexpr const char* hostname = "";
-    inline constexpr const char* cert_file_path = "../certs/server.crt";
-    inline constexpr const char* key_file_path = "../certs/server.key";
-    inline constexpr const char* ca_file_path = "../certs/ca.pem";
+    inline constexpr const char* cert_file_path = "../../test-new-tcp-echo/certs/server.crt";
+    inline constexpr const char* key_file_path = "../../test-new-tcp-echo/certs/server.key";
+    inline constexpr const char* ca_file_path = "../../test-new-tcp-echo/certs/ca.pem";
 
 
-    inline constexpr size_t MSG_LIMIT_PER_CLIENT = 100'000;
+    inline constexpr size_t MSG_LIMIT_PER_CLIENT = 300'000;
 //    inline constexpr size_t MSG_LIMIT_PER_CLIENT = 50;
 
     inline constexpr size_t CON_CLIENT_NUM = 1;
