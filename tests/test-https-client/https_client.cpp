@@ -10,10 +10,10 @@ namespace test {
         size_t sent_size;
     };
 
-    int TestHTTPSClient() {
-        fws::FLoop loop;
-        if (loop.Init<true>() < 0) {
-            printf("Failed to init floop, %s\n", fws::GetErrorStrP());
+    int TestHTTPSClient(int argc, char** argv) {
+
+        if (fws::InitEnv(argc, argv) < 0) {
+            printf("Error in init env: %s\n", fws::GetErrorString().c_str());
             return -1;
         }
 
@@ -23,6 +23,14 @@ namespace test {
                    ssl_manager_init_ret, fws::GetErrorStrP());
             std::abort();
         }
+
+        fws::FLoop loop;
+        if (loop.Init<true>() < 0) {
+            printf("Failed to init floop, %s\n", fws::GetErrorStrP());
+            return -1;
+        }
+
+
 
         fws::TLSSocket socket{};
         if (socket.Init<false>(REAL_HOST) < 0) {
@@ -64,7 +72,7 @@ namespace test {
             }
         });
 
-        socket.SetOnReadable([](fws::TLSSocket &sock, fws::IOBuffer &&buf, void *user_data){
+        socket.SetOnReadable([](fws::TLSSocket & /*sock*/, fws::IOBuffer &&buf, void * /*user_data*/){
             printf("On readable called in tls socket, get %ld bytes\n", buf.size);
             if (buf.size > 0) {
                 fwrite(buf.data + buf.start_pos, 1, buf.size, stdout);
@@ -72,12 +80,12 @@ namespace test {
 
         });
 
-        socket.SetOnClose([&loop](fws::TLSSocket &sock, void *user_data){
+        socket.SetOnClose([&loop](fws::TLSSocket & /*sock*/, void * /*user_data*/){
             printf("On close called in tls socket\n");
             loop.StopRun();
         });
 
-        socket.SetOnError([](fws::TLSSocket& sock, int code, std::string_view reason, void *user_data) {
+        socket.SetOnError([](fws::TLSSocket& , int code, std::string_view reason, void *) {
             printf("On error called in tls socket, code: %d, reason: %s\n", code, reason.data());
         });
 
@@ -102,7 +110,7 @@ namespace test {
 
 } // namespace test
 
-int main() {
+int main(int argc, char** argv) {
 
-    return test::TestHTTPSClient();
+    return test::TestHTTPSClient(argc, argv);
 }

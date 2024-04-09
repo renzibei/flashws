@@ -21,7 +21,13 @@ namespace test {
 
     };
 
-    int TestHTTPClient() {
+    int TestHTTPClient(int argc, char** argv) {
+
+        if (fws::InitEnv(argc, argv) < 0) {
+            printf("Failed to init env, %s\n", fws::GetErrorStrP());
+            return -1;
+        }
+
         fws::FLoop loop{};
 
         if (loop.Init<true>() < 0) {
@@ -133,7 +139,7 @@ namespace test {
 
 } // namespace test
 
-int main() {
-    return  test::TestHTTPClient();
+int main(int argc, char** argv) {
+    return  test::TestHTTPClient(argc, argv);
     return 0;
 }
