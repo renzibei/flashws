@@ -105,6 +105,7 @@ namespace fws {
                 if (body != nullptr) {
                     body_buf = RequestBuf(body_size);
                     memcpy(body_buf.data + body_buf.start_pos, body, body_size);
+                    body_buf.size = body_size;
                 }
                 request_to_add_.emplace_back(RequestInfo{op_type, String(path), String(query_params),
                                 std::move(body_buf),
@@ -193,8 +194,8 @@ namespace fws {
             if (req_info.op_type == HTTP_GET_OP) {
                 send_ret = http.template SendRequest<HTTP_GET_OP>(std::string_view(req_info.path),
                                                                   std::string_view(req_info.query_params),
-                                                                  (const char*)req_info.body.data + req_info.body.start_pos,
-                                                                  req_info.body.size,
+                                                                  nullptr,
+                                                                  0,
                                                                   std::string_view(req_info.headers));
             }
             else if (req_info.op_type == HTTP_POST_OP) {

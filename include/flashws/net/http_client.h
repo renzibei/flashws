@@ -223,10 +223,8 @@ namespace fws {
             static constexpr char ACCEPT_ENCODING[] = "Accept-Encoding: \r\n";
             memcpy(data, ACCEPT_ENCODING, sizeof(ACCEPT_ENCODING) - 1);
             data += sizeof(ACCEPT_ENCODING) - 1;
-            memcpy(data, CRLF, 2);
-            data += 2;
             if constexpr (op_type == HTTP_GET_OP) {
-                if (body != nullptr) {
+                if (body != nullptr && body_size > 0) {
                     Close();
                     SetErrorFormatStr("GET request should not have body\n");
                     return -1;
@@ -247,11 +245,13 @@ namespace fws {
                     data += body_size;
                 }
             }
+            memcpy(data, CRLF, 2);
+            data += 2;
             send_buf_.size = data - data_start;
             // TODO: delete debug info
 #ifdef FWS_DEV_DEBUG
             printf("Request size: %zu\n", send_buf_.size);
-            fwrite(send_buf_.data + send_buf_.start_pos, 1, send_buf_.size, stdout);
+            fwrite(send_buf_.data + send_buf_.start_pos, 1, send_buf_.size, stderr);
             printf("\n");
 #endif
             FWS_ASSERT(sock_ptr_->is_open());
