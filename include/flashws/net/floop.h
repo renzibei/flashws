@@ -42,7 +42,8 @@ namespace fws {
         bool clean_up_flag_{};
         int64_t last_event_time_ns_{};
 
-        using OnEventFunc = stdext::inplace_function<void(FLoop&)>;
+        using OnEventFunc = stdext::inplace_function<void(FLoop&), 128 - 24>;
+        static_assert(sizeof(OnEventFunc) <= 128);
         OnEventFunc on_event_;
 
         static constexpr size_t MAX_MONITOR_EVENT_NUM = 1024;

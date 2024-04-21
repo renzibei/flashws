@@ -16,7 +16,7 @@ namespace fws {
         using HTTPOnErrorFunc = std::function<void(ClientType&, std::string_view)>;
 
         HTTPClientPool():
-            keep_conn_cnt_(0), max_conn_cnt_(0), conn_pre_open_cnt_(0), cur_retry_cnt_(0), max_retry_cnt_(0),
+            keep_conn_cnt_(0), max_conn_cnt_(0), cur_retry_cnt_(0), max_retry_cnt_(0),
             loop_ptr_(nullptr), idle_client_pool_{} , request_to_add_{}, port_(0), host_(), ip_(),
             busy_client_map_{} {}
 
@@ -26,10 +26,11 @@ namespace fws {
         HTTPClientPool(HTTPClientPool&& o) noexcept:
             keep_conn_cnt_(std::exchange(o.keep_conn_cnt_, 0)),
             max_conn_cnt_(std::exchange(o.max_conn_cnt_, 0)),
-            conn_pre_open_cnt_(std::exchange(o.conn_pre_open_cnt_, 0)),
+//            conn_pre_open_cnt_(std::exchange(o.conn_pre_open_cnt_, 0)),
             cur_retry_cnt_(std::exchange(o.cur_retry_cnt_, 0)),
             max_retry_cnt_(std::exchange(o.max_retry_cnt_, 0)),
             loop_ptr_(std::exchange(o.loop_ptr_, nullptr)),
+            pre_open_pool_(std::move(o.pre_open_pool_)),
             idle_client_pool_(std::move(o.idle_client_pool_)),
             request_to_add_(std::move(o.request_to_add_)),
             port_(std::exchange(o.port_, 0)),
@@ -60,7 +61,7 @@ namespace fws {
             busy_client_map_.reserve(max_conn_cnt);
             keep_conn_cnt_ = keep_conn_cnt;
             max_conn_cnt_ = max_conn_cnt;
-            conn_pre_open_cnt_ = 0;
+//            conn_pre_open_cnt_ = 0;
             cur_retry_cnt_ = 0;
             max_retry_cnt_ = max_retry_cnt;
             loop_ptr_ = &loop;
@@ -84,7 +85,7 @@ namespace fws {
                         std::string_view query_params={},
                         const char* body=nullptr, size_t body_size=0, std::string_view headers={}) {
             if (idle_client_pool_.empty()) {
-                size_t total_possible_conn = busy_client_map_.size() + idle_client_pool_.size() + conn_pre_open_cnt_;
+                size_t total_possible_conn = busy_client_map_.size() + idle_client_pool_.size() + pre_open_pool_.size();
                 if FWS_UNLIKELY(total_possible_conn >= max_conn_cnt_) {
                     // Requests will be added to the queue and postponed until a connection is available
 #ifdef FWS_DEBUG
@@ -93,7 +94,7 @@ namespace fws {
 #endif
                 }
 //                FWS_ASSERT(conn_pre_open_cnt_ >= request_to_add_.size());
-                if (conn_pre_open_cnt_ <= request_to_add_.size() && total_possible_conn < max_conn_cnt_) {
+                if (pre_open_pool_.size() <= request_to_add_.size() && total_possible_conn < max_conn_cnt_) {
                     int add_ret = AddNewHttpClient(*loop_ptr_, host_, ip_, port_);
                     if FWS_UNLIKELY(add_ret < 0) {
                         SetErrorFormatStr("HTTPClientPool AddNewHttpClient failed");
@@ -147,10 +148,11 @@ namespace fws {
         using PtrAlloc = typename std::allocator_traits<CharAlloc>::template rebind_alloc<ClientType*>;
         size_t keep_conn_cnt_;
         size_t max_conn_cnt_;
-        size_t conn_pre_open_cnt_;
+//        size_t conn_pre_open_cnt_;
         size_t cur_retry_cnt_;
         size_t max_retry_cnt_;
         FLoop<CharAlloc> *loop_ptr_;
+        ska::flat_hash_set<ClientType*, std::hash<ClientType*>, std::equal_to<ClientType*>, PtrAlloc> pre_open_pool_;
         ska::flat_hash_set<ClientType*, std::hash<ClientType*>, std::equal_to<ClientType*>, PtrAlloc> idle_client_pool_;
         struct RequestInfo {
             RequestInfo() = default;
@@ -232,6 +234,28 @@ namespace fws {
             return 0;
         }
 
+        static void AddClientIfNeeded(HTTPClientPool* this_ptr) {
+            if FWS_UNLIKELY(!this_ptr->loop_ptr_->is_running()) {
+                return;
+            }
+
+            if FWS_UNLIKELY(this_ptr->cur_retry_cnt_ > this_ptr->max_retry_cnt_) {
+                fprintf(stderr, "HTTPClientPool AddNewHttpClient retry cnt exceed max_retry_cnt\n");
+                this_ptr->loop_ptr_->StopRun();
+            }
+            if (this_ptr->idle_client_pool_.size() + this_ptr->pre_open_pool_.size() < this_ptr->keep_conn_cnt_) {
+                ++this_ptr->cur_retry_cnt_;
+                // TODO: Delete debug print
+//                    printf("HTTPClientPool AddNewHttpClient retry cnt %zu\n", this_ptr->cur_retry_cnt_);
+                int add_ret = this_ptr->AddNewHttpClient(*this_ptr->loop_ptr_,
+                                                         std::string_view(this_ptr->host_),
+                                                         std::string_view(this_ptr->ip_), this_ptr->port_);
+                if FWS_UNLIKELY(add_ret < 0) {
+                    fprintf(stderr, "HTTPClientPool AddNewHttpClient failed\n");
+                    this_ptr->loop_ptr_->StopRun();
+                }
+            }
+        }
 
         int AddNewHttpClient(FLoop<CharAlloc> &loop, std::string_view host,
                              std::string_view ip, int port) {
@@ -239,10 +263,12 @@ namespace fws {
             if (create_ret < 0) {
                 return -1;
             }
-            ++conn_pre_open_cnt_;
+            pre_open_pool_.emplace(client);
+//            ++conn_pre_open_cnt_;
             client->SetOnOpen([](ClientType &http, void *user_data) {
                 auto *this_ptr = static_cast<HTTPClientPool*>(user_data);
-                --this_ptr->conn_pre_open_cnt_;
+//                --this_ptr->conn_pre_open_cnt_;
+                this_ptr->pre_open_pool_.erase(&http);
                 if (this_ptr->request_to_add_.empty()) {
                     this_ptr->idle_client_pool_.emplace(&http);
                     return;
@@ -253,10 +279,30 @@ namespace fws {
             client->SetOnError([](ClientType &http, std::string_view reason, void *user_data) {
                 auto *this_ptr = static_cast<HTTPClientPool*>(user_data);
                 auto find_it = this_ptr->busy_client_map_.find(&http);
-                FWS_ASSERT(find_it != this_ptr->busy_client_map_.end());
+                if (find_it != this_ptr->busy_client_map_.end()) {
+                    find_it->second.on_error(http, reason);
+                    this_ptr->busy_client_map_.erase(find_it);
+                }
+                else {
+                    auto pool_it = this_ptr->idle_client_pool_.find(&http);
+                    if (pool_it != this_ptr->idle_client_pool_.end()) {
+                        this_ptr->idle_client_pool_.erase(pool_it);
+                    }
+                    else {
+                        // otherwise, the client may be closed before it is opened.
+                        // For example, when we StopRun the loop
+                        auto pre_open_it = this_ptr->pre_open_pool_.find(&http);
+                        FT_ASSERT(pre_open_it != this_ptr->pre_open_pool_.end());
+                        if (pre_open_it != this_ptr->pre_open_pool_.end()) {
+                            this_ptr->pre_open_pool_.erase(pre_open_it);
+                        }
 
-                find_it->second.on_error(http, reason);
-//                this_ptr->busy_client_map_.erase(find_it);
+                        FWS_ASSERT(!this_ptr->loop_ptr_->is_running());
+                        return;
+                    }
+                }
+
+                AddClientIfNeeded(this_ptr);
             });
             client->SetOnClose([](ClientType &http, void *user_data) {
                 auto *this_ptr = static_cast<HTTPClientPool*>(user_data);
@@ -270,35 +316,18 @@ namespace fws {
                         this_ptr->idle_client_pool_.erase(pool_it);
                     }
                     else {
-                        // otherwise, the client may be closed before it is opened.
-                        // For example, when we StopRun the loop
-                        FWS_ASSERT(this_ptr->conn_pre_open_cnt_ > 0);
-                        --this_ptr->conn_pre_open_cnt_;
+                        auto pre_open_it = this_ptr->pre_open_pool_.find(&http);
+                        if (pre_open_it != this_ptr->pre_open_pool_.end()) {
+                            this_ptr->pre_open_pool_.erase(pre_open_it);
+                        }
+                        // In the else branch, the client may be deleted in Set On Error
+
                         FWS_ASSERT(!this_ptr->loop_ptr_->is_running());
                         return;
                     }
 
                 }
-                if FWS_UNLIKELY(!this_ptr->loop_ptr_->is_running()) {
-                    return;
-                }
-
-                if FWS_UNLIKELY(this_ptr->cur_retry_cnt_ > this_ptr->max_retry_cnt_) {
-                    fprintf(stderr, "HTTPClientPool AddNewHttpClient retry cnt exceed max_retry_cnt\n");
-                    this_ptr->loop_ptr_->StopRun();
-                }
-                if (this_ptr->idle_client_pool_.size() < this_ptr->keep_conn_cnt_) {
-                    ++this_ptr->cur_retry_cnt_;
-                    // TODO: Delete debug print
-//                    printf("HTTPClientPool AddNewHttpClient retry cnt %zu\n", this_ptr->cur_retry_cnt_);
-                    int add_ret = this_ptr->AddNewHttpClient(*this_ptr->loop_ptr_,
-                                         std::string_view(this_ptr->host_),
-                                         std::string_view(this_ptr->ip_), this_ptr->port_);
-                    if FWS_UNLIKELY(add_ret < 0) {
-                        fprintf(stderr, "HTTPClientPool AddNewHttpClient failed\n");
-                        this_ptr->loop_ptr_->StopRun();
-                    }
-                }
+                AddClientIfNeeded(this_ptr);
             });
             client->SetOnRecvMsg([](ClientType &http, int status_code, IOBuffer &&buf, void *user_data) {
                 auto *this_ptr = static_cast<HTTPClientPool*>(user_data);
