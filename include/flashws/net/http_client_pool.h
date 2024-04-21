@@ -292,7 +292,7 @@ namespace fws {
                         // otherwise, the client may be closed before it is opened.
                         // For example, when we StopRun the loop
                         auto pre_open_it = this_ptr->pre_open_pool_.find(&http);
-                        FT_ASSERT(pre_open_it != this_ptr->pre_open_pool_.end());
+                        FWS_ASSERT(pre_open_it != this_ptr->pre_open_pool_.end());
                         if (pre_open_it != this_ptr->pre_open_pool_.end()) {
                             this_ptr->pre_open_pool_.erase(pre_open_it);
                         }
