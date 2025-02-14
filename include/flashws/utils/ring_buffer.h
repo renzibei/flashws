@@ -94,18 +94,22 @@ namespace frb {
     class RingBuffer;
 
     template<class T>
-    class BidirectionalIterator {
+    class SemiRandomIterator {
     public:
         using difference_type = std::ptrdiff_t;
-        using iterator_category = std::bidirectional_iterator_tag;
+        using iterator_category = std::random_access_iterator_tag;
         using value_type = T;
         using pointer = value_type*;
         using reference = value_type&;
 
-        constexpr BidirectionalIterator() noexcept: buf_(nullptr), pos_(0), mask_(0) {}
+        constexpr SemiRandomIterator() noexcept: buf_(nullptr), pos_(0), mask_(0) {}
 
-        constexpr explicit BidirectionalIterator(T* buf, std::size_t pos, std::size_t mask)
-        noexcept: buf_(buf), pos_(pos), mask_(mask) {}
+        constexpr explicit SemiRandomIterator(T* buf, std::size_t pos, std::size_t mask) noexcept:
+            buf_(buf), pos_(pos), mask_(mask) {}
+
+        operator SemiRandomIterator<const T>() const {
+            return SemiRandomIterator<const T>(buf_, pos_, mask_);
+        }
 
         reference operator*() const {return buf_[pos_];}
 
@@ -113,36 +117,67 @@ namespace frb {
             return buf_ + pos_;
         }
 
-        friend constexpr bool operator== (const BidirectionalIterator<T>&a,
-                                          const BidirectionalIterator<T>&b) noexcept {
+        friend constexpr bool operator== (const SemiRandomIterator<T>&a,
+                                          const SemiRandomIterator<T>&b) noexcept {
             return a.pos_ == b.pos_;
         }
 
-        friend constexpr bool operator!= (const BidirectionalIterator<T>&a,
-                                          const BidirectionalIterator<T>&b) noexcept {
+        friend constexpr bool operator!= (const SemiRandomIterator<T>&a,
+                                          const SemiRandomIterator<T>&b) noexcept {
             return a.pos_ != b.pos_;
         }
 
-        BidirectionalIterator<T> &operator++() noexcept {
+        SemiRandomIterator<T> &operator++() noexcept {
             pos_ = (pos_ + 1U) & mask_;
             return *this;
         }
 
-        BidirectionalIterator<T> &operator--() noexcept {
+        SemiRandomIterator<T> &operator--() noexcept {
             pos_ = (pos_ + mask_) & mask_;
             return *this;
         }
 
-        BidirectionalIterator<T> operator++(int) noexcept {
+        SemiRandomIterator<T> operator++(int) noexcept {
             auto ret = *this;
             ++(*this);
             return ret;
         }
 
-        BidirectionalIterator<T> operator--(int) noexcept {
+        SemiRandomIterator<T> operator--(int) noexcept {
             auto ret = *this;
             --(*this);
             return ret;
+        }
+
+        SemiRandomIterator<T> &operator+=(difference_type n) noexcept {
+            pos_ = (pos_ + n) & mask_;
+            return *this;
+        }
+
+        SemiRandomIterator<T> &operator-=(difference_type n) noexcept {
+            pos_ = (pos_ + mask_ + 1U - n) & mask_;
+            return *this;
+        }
+
+        SemiRandomIterator<T> operator+(difference_type n) const noexcept {
+            auto ret = *this;
+            ret += n;
+            return ret;
+        }
+
+        SemiRandomIterator<T> operator-(difference_type n) const noexcept {
+            auto ret = *this;
+            ret -= n;
+            return ret;
+        }
+
+        // We assume that the difference is always positive
+        difference_type operator-(const SemiRandomIterator<T>& other) const noexcept {
+            return (pos_  + mask_ + 1U - other.pos_ ) & mask_;
+        }
+
+        reference operator[](difference_type n) const noexcept {
+            return buf_[(pos_ + n) & mask_];
         }
 
 
@@ -173,8 +208,8 @@ namespace frb {
         using const_reference = const value_type&;
         using pointer = typename AllocTraits ::pointer;
         using const_pointer = typename AllocTraits::const_pointer;
-        using iterator = BidirectionalIterator<value_type>;
-        using const_iterator = BidirectionalIterator<const value_type>;
+        using iterator = SemiRandomIterator<value_type>;
+        using const_iterator = SemiRandomIterator<const value_type>;
         using reverse_iterator = std::reverse_iterator<iterator>;
         using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
@@ -368,14 +403,63 @@ namespace frb {
 //            --size_;
         }
 
+        template<class... Args>
+        iterator emplace(const_iterator pos, Args&&... args) {
+
+            size_type cur_mask = mask_;
+            size_type cur_cap = cur_mask + 1U;
+            size_type cur_size = (tail_ - head_ + cur_cap) & cur_mask;
+            auto idx = pos.pos_; // Assuming pos_ gives the actual index in the buffer
+            if FRB_UNLIKELY(cur_size >= cur_mask) {
+                size_t to_head_dis = (idx + cur_cap - head_) & cur_mask;
+                cur_cap = std::max(cur_cap * 2U, MIN_CAP);
+                SetNewCap(cur_cap);
+                cur_mask = cur_cap - 1U;
+                idx = (head_ + to_head_dis) & cur_mask;
+            }
+
+
+            auto mask = cur_mask;
+            auto head = head_;
+            auto tail = tail_;
+            size_type distance_to_head = (idx + mask + 1 - head) & mask;
+            size_type distance_to_tail = (tail + mask + 1 - idx) & mask;
+            size_type insert_pos = idx;
+            if (distance_to_head <= distance_to_tail + 1) {
+                // Move elements from head to idx toward head
+                size_t new_head = (head + mask) & mask; // head - 1
+                for (size_type i = new_head;;) {
+                    size_type next_i = (i + 1) & mask; // similar to ++i
+                    if (next_i == idx) {
+                        break;
+                    }
+                    buf_[i] = std::move(buf_[next_i]);
+                    i = next_i;
+                }
+                insert_pos = (idx + mask) & mask; // idx - 1
+                AllocTraits::construct(*this, buf_ + insert_pos, std::forward<Args>(args)...);
+                head_ = head = new_head;
+            } else {
+                // Move elements from idx to tail toward tail
+                for (size_type i = tail; i != idx;) {
+                    size_type next_i = (i + mask) & mask; // similar to --i
+                    buf_[i] = std::move(buf_[next_i]);
+                    i = next_i;
+                }
+                AllocTraits::construct(*this, buf_ + insert_pos, std::forward<Args>(args)...);
+                tail_ = tail = (tail + 1) & mask;
+            }
+            return iterator(buf_, insert_pos, mask);
+        }
+
         iterator erase(iterator pos) {
 
             auto idx = pos.pos_; // Assuming pos_ gives the actual index in the buffer
             auto mask = mask_;
             auto head = head_;
             auto tail = tail_;
-            size_type distance_to_head = (idx - head + mask + 1) & mask;
-            size_type distance_to_tail = (tail - idx + mask) & mask;
+            size_type distance_to_head = (idx  + mask + 1 - head) & mask;
+            size_type distance_to_tail = (tail + mask - idx) & mask;
 
             if (distance_to_head < distance_to_tail) {
                 // Move elements from head to idx toward idx
