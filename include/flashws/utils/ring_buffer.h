@@ -223,7 +223,7 @@ namespace frb {
                   head_(0), tail_(0) {
             size_type cap = std::max(size_type(1U) << detail::RoundUpLog2(count), MIN_CAP);
             mask_ = cap - 1U;
-            AllocTraits::allocate(*this, cap);
+            buf_ = AllocTraits::allocate(*this, cap);
             for (size_type i = 0; i < count; ++i) {
                 AllocTraits::construct(*this, buf_ + i, value);
             }
@@ -266,7 +266,7 @@ namespace frb {
         RingBuffer(InputIt first, InputIt last, const Allocator& alloc = Allocator())
                 : RingBuffer(alloc) {
             for (auto it = first; it != last; ++it) {
-                emplace_back(*this);
+                emplace_back(*it);
             }
         }
 
@@ -310,8 +310,7 @@ namespace frb {
             AllocTraits::construct(*this, buf + tail, std::forward<Args>(args)...);
             auto new_tail = (tail + 1U) & cur_mask;
             tail_ = new_tail;
-//            ++size_;
-            return buf[new_tail];
+            return buf[tail];
         }
 
         void push_back( const T& value ) {
